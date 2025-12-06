@@ -372,10 +372,4 @@ func AdminStatsOverview(services *service.Services) gin.HandlerFunc {
 	}
 }
 
-func getUserFromContext(c *gin.Context) *model.User {
-	user, exists := c.Get("user")
-	if !exists {
-		return nil
-	}
-	return user.(*model.User)
-}
+// getUserFromContext 定义在 user.go 中

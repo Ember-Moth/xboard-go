@@ -41,3 +41,8 @@ mail:
 telegram:
   bot_token: ""  # Your Telegram Bot Token
   chat_id: ""    # Admin Chat ID for notifications
+
+# Initial admin user (created on first startup)
+admin:
+  email: "admin@example.com"
+  password: "admin123456"

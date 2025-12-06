@@ -57,7 +57,7 @@ func (r *ServerRepository) GetAvailableServers(groupID int64) ([]model.Server, e
 	// 使用 JSON_CONTAINS 查询包含指定 group_id 的服务器
 	err := r.db.
 		Where("JSON_CONTAINS(group_ids, ?)", groupID).
-		Where("show = ?", true).
+		Where("`show` = ?", true).
 		Order("sort ASC").
 		Find(&servers).Error
 	return servers, err

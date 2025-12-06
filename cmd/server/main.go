@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"time"
 
 	"xboard/internal/config"
 	"xboard/internal/handler"
@@ -11,9 +12,42 @@ import (
 	"xboard/internal/service"
 	"xboard/pkg/cache"
 	"xboard/pkg/database"
+	"xboard/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
+
+// initAdminUser 初始化管理员用户
+func initAdminUser(userRepo *repository.UserRepository, email, password string) error {
+	// 检查是否已存在
+	existing, _ := userRepo.FindByEmail(email)
+	if existing != nil {
+		// 已存在，确保是管理员
+		if !existing.IsAdmin {
+			existing.IsAdmin = true
+			return userRepo.Update(existing)
+		}
+		return nil
+	}
+
+	// 创建新管理员
+	hashedPassword, err := utils.HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	admin := &model.User{
+		Email:     email,
+		Password:  hashedPassword,
+		UUID:      utils.GenerateUUID(),
+		Token:     utils.GenerateToken(32),
+		IsAdmin:   true,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}
+
+	return userRepo.Create(admin)
+}
 
 func main() {
 	configPath := flag.String("config", "configs/config.yaml", "config file path")
@@ -64,6 +98,15 @@ func main() {
 
 	// Initialize services
 	services := service.NewServices(repos, cacheClient, cfg)
+
+	// Initialize admin user if configured
+	if cfg.Admin.Email != "" && cfg.Admin.Password != "" {
+		if err := initAdminUser(repos.User, cfg.Admin.Email, cfg.Admin.Password); err != nil {
+			log.Printf("Warning: Failed to init admin user: %v", err)
+		} else {
+			log.Printf("Admin user initialized: %s", cfg.Admin.Email)
+		}
+	}
 
 	// Start scheduler
 	go services.Scheduler.Start()

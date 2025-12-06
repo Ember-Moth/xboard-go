@@ -43,7 +43,7 @@ func (r *PlanRepository) GetAll() ([]model.Plan, error) {
 
 func (r *PlanRepository) GetAvailable() ([]model.Plan, error) {
 	var plans []model.Plan
-	err := r.db.Where("show = ? AND sell = ?", true, true).Order("sort ASC").Find(&plans).Error
+	err := r.db.Where("`show` = ? AND sell = ?", true, true).Order("sort ASC").Find(&plans).Error
 	return plans, err
 }
 

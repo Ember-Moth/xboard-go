@@ -14,6 +14,12 @@ type Config struct {
 	Node     NodeConfig     `yaml:"node"`
 	Mail     MailConfig     `yaml:"mail"`
 	Telegram TelegramConfig `yaml:"telegram"`
+	Admin    AdminConfig    `yaml:"admin"`
+}
+
+type AdminConfig struct {
+	Email    string `yaml:"email"`
+	Password string `yaml:"password"`
 }
 
 type AppConfig struct {

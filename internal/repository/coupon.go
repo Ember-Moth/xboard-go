@@ -188,7 +188,7 @@ func (r *NoticeRepository) GetAll() ([]model.Notice, error) {
 
 func (r *NoticeRepository) GetVisible() ([]model.Notice, error) {
 	var notices []model.Notice
-	err := r.db.Where("show = ?", true).Order("sort ASC, created_at DESC").Find(&notices).Error
+	err := r.db.Where("`show` = ?", true).Order("sort ASC, created_at DESC").Find(&notices).Error
 	return notices, err
 }
 
@@ -230,7 +230,7 @@ func (r *KnowledgeRepository) GetAll() ([]model.Knowledge, error) {
 
 func (r *KnowledgeRepository) GetVisible(language string) ([]model.Knowledge, error) {
 	var items []model.Knowledge
-	query := r.db.Where("show = ?", true)
+	query := r.db.Where("`show` = ?", true)
 	if language != "" {
 		query = query.Where("language = ?", language)
 	}
@@ -240,7 +240,7 @@ func (r *KnowledgeRepository) GetVisible(language string) ([]model.Knowledge, er
 
 func (r *KnowledgeRepository) GetByCategory(category, language string) ([]model.Knowledge, error) {
 	var items []model.Knowledge
-	query := r.db.Where("show = ? AND category = ?", true, category)
+	query := r.db.Where("`show` = ? AND category = ?", true, category)
 	if language != "" {
 		query = query.Where("language = ?", language)
 	}
@@ -250,7 +250,7 @@ func (r *KnowledgeRepository) GetByCategory(category, language string) ([]model.
 
 func (r *KnowledgeRepository) GetCategories(language string) ([]string, error) {
 	var categories []string
-	query := r.db.Model(&model.Knowledge{}).Where("show = ?", true)
+	query := r.db.Model(&model.Knowledge{}).Where("`show` = ?", true)
 	if language != "" {
 		query = query.Where("language = ?", language)
 	}

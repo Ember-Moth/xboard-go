@@ -70,8 +70,10 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 初始化时获取用户信息
-  if (token.value) {
-    fetchUser()
+  async function init() {
+    if (token.value) {
+      await fetchUser()
+    }
   }
 
   return {
@@ -86,5 +88,6 @@ export const useUserStore = defineStore('user', () => {
     register,
     fetchUser,
     logout,
+    init,
   }
 })

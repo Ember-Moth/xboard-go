@@ -70,6 +70,22 @@ const isActive = (path: string) => {
             <span class="text-lg">{{ item.icon }}</span>
             <span class="font-medium">{{ item.name }}</span>
           </RouterLink>
+          
+          <!-- 管理员入口 -->
+          <RouterLink
+            v-if="userStore.isAdmin"
+            to="/admin"
+            :class="[
+              'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mt-4 border-t border-surface-200 pt-6',
+              route.path.startsWith('/admin')
+                ? 'bg-red-500 text-white shadow-md' 
+                : 'text-red-600 hover:bg-red-50'
+            ]"
+            @click="isSidebarOpen = false"
+          >
+            <span class="text-lg">🛠️</span>
+            <span class="font-medium">管理后台</span>
+          </RouterLink>
         </nav>
 
         <!-- User Info -->

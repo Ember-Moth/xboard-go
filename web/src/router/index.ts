@@ -129,8 +129,17 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
+  
+  // 如果有 token 但没有用户信息，先获取用户信息
+  if (userStore.token && !userStore.user) {
+    try {
+      await userStore.fetchUser()
+    } catch (e) {
+      // 获取失败，清除 token
+    }
+  }
   
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     next('/login')

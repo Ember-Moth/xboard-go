@@ -33,6 +33,12 @@ func GetPaymentMethods(services *service.Services) gin.HandlerFunc {
 // CreatePayment 创建支付
 func CreatePayment(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		user := getUserFromContext(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
 		var req struct {
 			TradeNo   string `json:"trade_no" binding:"required"`
 			PaymentID int64  `json:"payment_id" binding:"required"`
@@ -40,6 +46,17 @@ func CreatePayment(services *service.Services) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 如果 payment_id 为 0，使用余额支付
+		if req.PaymentID == 0 {
+			err := services.Payment.PayWithBalance(req.TradeNo, user.ID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"data": gin.H{"type": "balance", "paid": true}})
 			return
 		}
 

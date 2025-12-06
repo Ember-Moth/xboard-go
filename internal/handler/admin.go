@@ -518,7 +518,7 @@ func AdminUpdateOrderStatus(services *service.Services) gin.HandlerFunc {
 		id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 
 		var req struct {
-			Status int `json:"status" binding:"required"`
+			Status int `json:"status"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -526,9 +526,25 @@ func AdminUpdateOrderStatus(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		if err := services.Stats.UpdateOrderStatus(id, req.Status); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		order, err := services.Order.GetByID(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
 			return
+		}
+
+		// 如果要激活订单（状态改为已完成）
+		if req.Status == 3 && order.Status == 0 {
+			// 调用完成订单逻辑
+			if err := services.Order.CompleteOrder(order.TradeNo, "admin_manual"); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			// 其他状态更新
+			if err := services.Stats.UpdateOrderStatus(id, req.Status); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"data": true})

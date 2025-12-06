@@ -274,3 +274,42 @@ func (s *PaymentService) queryEpayStatus(order *model.Order, config map[string]s
 
 	return false, nil
 }
+
+// PayWithBalance 使用余额支付
+func (s *PaymentService) PayWithBalance(tradeNo string, userID int64) error {
+	order, err := s.orderRepo.FindByTradeNo(tradeNo)
+	if err != nil {
+		return errors.New("order not found")
+	}
+
+	if order.Status != model.OrderStatusPending {
+		return errors.New("order is not pending")
+	}
+
+	if order.UserID != userID {
+		return errors.New("permission denied")
+	}
+
+	// 获取用户
+	user, err := s.orderSvc.userRepo.FindByID(userID)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	// 检查余额
+	if user.Balance < order.TotalAmount {
+		return errors.New("insufficient balance")
+	}
+
+	// 扣除余额
+	user.Balance -= order.TotalAmount
+	if err := s.orderSvc.userRepo.Update(user); err != nil {
+		return err
+	}
+
+	// 记录余额支付
+	order.BalanceAmount = &order.TotalAmount
+
+	// 完成订单
+	return s.orderSvc.CompleteOrder(tradeNo, "balance_"+tradeNo)
+}

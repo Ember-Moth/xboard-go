@@ -148,6 +148,8 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			admin.GET("/users", AdminListUsers(services))
 			admin.GET("/user/:id", AdminGetUser(services))
 			admin.PUT("/user/:id", AdminUpdateUser(services))
+			admin.DELETE("/user/:id", AdminDeleteUser(services))
+			admin.POST("/user/:id/reset_traffic", AdminResetUserTraffic(services))
 
 			// Plan management
 			admin.GET("/plans", AdminListPlans(services))
@@ -157,6 +159,8 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 
 			// Order management
 			admin.GET("/orders", AdminListOrders(services))
+			admin.GET("/order/:id", AdminGetOrder(services))
+			admin.PUT("/order/:id/status", AdminUpdateOrderStatus(services))
 
 			// Settings
 			admin.GET("/settings", AdminGetSettings(services))

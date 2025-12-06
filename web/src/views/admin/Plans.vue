@@ -7,13 +7,29 @@ interface Plan {
   name: string
   transfer_enable: number
   speed_limit: number | null
+  device_limit: number | null
   prices: Record<string, number>
   show: boolean
   sell: boolean
+  content: string
+  sort: number
 }
 
 const plans = ref<Plan[]>([])
 const loading = ref(false)
+const showModal = ref(false)
+const editingPlan = ref<Partial<Plan> | null>(null)
+
+const periodLabels: Record<string, string> = {
+  monthly: '月付',
+  quarterly: '季付',
+  half_yearly: '半年付',
+  yearly: '年付',
+  two_yearly: '两年付',
+  three_yearly: '三年付',
+  onetime: '一次性',
+  reset: '流量重置',
+}
 
 const formatBytes = (gb: number) => {
   if (gb >= 1024) return `${(gb / 1024).toFixed(0)} TB`
@@ -40,6 +56,51 @@ const fetchPlans = async () => {
   }
 }
 
+const openCreateModal = () => {
+  editingPlan.value = {
+    name: '',
+    transfer_enable: 100,
+    speed_limit: null,
+    device_limit: null,
+    prices: { monthly: 0, quarterly: 0, half_yearly: 0, yearly: 0 },
+    show: true,
+    sell: true,
+    content: '',
+    sort: 0,
+  }
+  showModal.value = true
+}
+
+const openEditModal = (plan: Plan) => {
+  editingPlan.value = { ...plan }
+  showModal.value = true
+}
+
+const savePlan = async () => {
+  if (!editingPlan.value) return
+  try {
+    if (editingPlan.value.id) {
+      await api.put(`/api/v2/admin/plan/${editingPlan.value.id}`, editingPlan.value)
+    } else {
+      await api.post('/api/v2/admin/plan', editingPlan.value)
+    }
+    showModal.value = false
+    fetchPlans()
+  } catch (e: any) {
+    alert(e.response?.data?.error || '保存失败')
+  }
+}
+
+const deletePlan = async (plan: Plan) => {
+  if (!confirm(`确定要删除套餐 "${plan.name}" 吗？`)) return
+  try {
+    await api.delete(`/api/v2/admin/plan/${plan.id}`)
+    fetchPlans()
+  } catch (e: any) {
+    alert(e.response?.data?.error || '删除失败')
+  }
+}
+
 onMounted(fetchPlans)
 </script>
 
@@ -50,13 +111,13 @@ onMounted(fetchPlans)
         <h1 class="text-2xl font-bold text-gray-900">套餐管理</h1>
         <p class="text-gray-500 mt-1">管理订阅套餐</p>
       </div>
-      <button class="btn btn-primary">添加套餐</button>
+      <button @click="openCreateModal" class="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition">
+        添加套餐
+      </button>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-      <div v-if="loading" class="text-center py-12 text-gray-500">
-        加载中...
-      </div>
+      <div v-if="loading" class="text-center py-12 text-gray-500">加载中...</div>
 
       <table v-else class="w-full">
         <thead class="bg-gray-50 border-b border-gray-200">
@@ -80,17 +141,80 @@ onMounted(fetchPlans)
               {{ formatPrice(getLowestPrice(plan)) }}
             </td>
             <td class="px-6 py-4">
-              <span :class="['badge', plan.show && plan.sell ? 'badge-success' : 'badge-danger']">
+              <span :class="['px-2 py-1 rounded-full text-xs', plan.show && plan.sell ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600']">
                 {{ plan.show && plan.sell ? '销售中' : '已下架' }}
               </span>
             </td>
             <td class="px-6 py-4 text-right space-x-2">
-              <button class="text-primary-600 hover:text-primary-700 text-sm">编辑</button>
-              <button class="text-red-600 hover:text-red-700 text-sm">删除</button>
+              <button @click="openEditModal(plan)" class="text-primary-600 hover:text-primary-700 text-sm">编辑</button>
+              <button @click="deletePlan(plan)" class="text-red-600 hover:text-red-700 text-sm">删除</button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <!-- Modal -->
+    <Teleport to="body">
+      <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/30" @click="showModal = false"></div>
+        <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+          <h3 class="text-lg font-bold mb-4">{{ editingPlan?.id ? '编辑套餐' : '添加套餐' }}</h3>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+              <input v-model="editingPlan!.name" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+            </div>
+            
+            <div class="grid grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">流量 (GB)</label>
+                <input v-model.number="editingPlan!.transfer_enable" type="number" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">限速 (Mbps)</label>
+                <input v-model.number="editingPlan!.speed_limit" type="number" placeholder="不限速" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">设备数</label>
+                <input v-model.number="editingPlan!.device_limit" type="number" placeholder="不限制" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">价格设置 (分)</label>
+              <div class="grid grid-cols-4 gap-3">
+                <div v-for="(label, key) in periodLabels" :key="key">
+                  <label class="block text-xs text-gray-500 mb-1">{{ label }}</label>
+                  <input v-model.number="editingPlan!.prices![key]" type="number" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+              <textarea v-model="editingPlan!.content" rows="3" class="w-full px-4 py-2 border border-gray-200 rounded-xl"></textarea>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-2">
+                <input v-model="editingPlan!.show" type="checkbox" class="rounded" />
+                <span class="text-sm">显示</span>
+              </label>
+              <label class="flex items-center gap-2">
+                <input v-model="editingPlan!.sell" type="checkbox" class="rounded" />
+                <span class="text-sm">销售</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex gap-3 mt-6">
+            <button @click="showModal = false" class="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50">取消</button>
+            <button @click="savePlan" class="flex-1 px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600">保存</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

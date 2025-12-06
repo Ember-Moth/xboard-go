@@ -1,25 +1,28 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { api } from '@/api'
+import api from '@/api'
 
 interface Notice {
   id: number
   title: string
   content: string
+  img_url: string
   show: boolean
-  sort: number | null
+  sort: number
   created_at: number
 }
 
 const notices = ref<Notice[]>([])
 const loading = ref(false)
 const showModal = ref(false)
-const editingNotice = ref<Partial<Notice>>({})
+const editingNotice = ref<Partial<Notice> | null>(null)
+
+const formatDate = (ts: number) => new Date(ts * 1000).toLocaleDateString()
 
 const fetchNotices = async () => {
   loading.value = true
   try {
-    const res = await api.get('/admin/notices')
+    const res = await api.get('/api/v2/admin/notices')
     notices.value = res.data.data || []
   } catch (e) {
     console.error(e)
@@ -28,40 +31,46 @@ const fetchNotices = async () => {
   }
 }
 
-const openModal = (notice?: Notice) => {
-  if (notice) {
-    editingNotice.value = { ...notice }
-  } else {
-    editingNotice.value = { show: true, sort: 0 }
+const openCreateModal = () => {
+  editingNotice.value = {
+    title: '',
+    content: '',
+    img_url: '',
+    show: true,
+    sort: 0,
   }
   showModal.value = true
 }
 
+const openEditModal = (notice: Notice) => {
+  editingNotice.value = { ...notice }
+  showModal.value = true
+}
+
 const saveNotice = async () => {
+  if (!editingNotice.value) return
   try {
     if (editingNotice.value.id) {
-      await api.put(`/admin/notice/${editingNotice.value.id}`, editingNotice.value)
+      await api.put(`/api/v2/admin/notice/${editingNotice.value.id}`, editingNotice.value)
     } else {
-      await api.post('/admin/notice', editingNotice.value)
+      await api.post('/api/v2/admin/notice', editingNotice.value)
     }
     showModal.value = false
     fetchNotices()
-  } catch (e) {
-    console.error(e)
+  } catch (e: any) {
+    alert(e.response?.data?.error || '保存失败')
   }
 }
 
-const deleteNotice = async (id: number) => {
-  if (!confirm('确定删除此公告？')) return
+const deleteNotice = async (notice: Notice) => {
+  if (!confirm(`确定要删除公告 "${notice.title}" 吗？`)) return
   try {
-    await api.delete(`/admin/notice/${id}`)
+    await api.delete(`/api/v2/admin/notice/${notice.id}`)
     fetchNotices()
-  } catch (e) {
-    console.error(e)
+  } catch (e: any) {
+    alert(e.response?.data?.error || '删除失败')
   }
 }
-
-const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString()
 
 onMounted(fetchNotices)
 </script>
@@ -69,42 +78,43 @@ onMounted(fetchNotices)
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-gray-800">公告管理</h1>
-      <button
-        @click="openModal()"
-        class="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition"
-      >
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">公告管理</h1>
+        <p class="text-gray-500 mt-1">管理系统公告</p>
+      </div>
+      <button @click="openCreateModal" class="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition">
         添加公告
       </button>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <table class="w-full">
-        <thead class="bg-gray-50">
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div v-if="loading" class="text-center py-12 text-gray-500">加载中...</div>
+
+      <div v-else-if="notices.length === 0" class="text-center py-12 text-gray-500">暂无公告</div>
+
+      <table v-else class="w-full">
+        <thead class="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th class="px-6 py-4 text-left text-sm font-medium text-gray-500">标题</th>
-            <th class="px-6 py-4 text-left text-sm font-medium text-gray-500">排序</th>
-            <th class="px-6 py-4 text-left text-sm font-medium text-gray-500">状态</th>
-            <th class="px-6 py-4 text-left text-sm font-medium text-gray-500">创建时间</th>
-            <th class="px-6 py-4 text-left text-sm font-medium text-gray-500">操作</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">标题</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">排序</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody class="divide-y divide-gray-200">
           <tr v-for="notice in notices" :key="notice.id" class="hover:bg-gray-50">
-            <td class="px-6 py-4 font-medium">{{ notice.title }}</td>
-            <td class="px-6 py-4 text-gray-500">{{ notice.sort || 0 }}</td>
+            <td class="px-6 py-4 font-medium text-gray-900">{{ notice.title }}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">{{ notice.sort }}</td>
             <td class="px-6 py-4">
-              <span
-                :class="notice.show ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'"
-                class="px-2 py-1 rounded-full text-xs"
-              >
+              <span :class="['px-2 py-1 rounded-full text-xs', notice.show ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600']">
                 {{ notice.show ? '显示' : '隐藏' }}
               </span>
             </td>
             <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(notice.created_at) }}</td>
-            <td class="px-6 py-4">
-              <button @click="openModal(notice)" class="text-primary-600 hover:text-primary-700 mr-3">编辑</button>
-              <button @click="deleteNotice(notice.id)" class="text-red-600 hover:text-red-700">删除</button>
+            <td class="px-6 py-4 text-right space-x-2">
+              <button @click="openEditModal(notice)" class="text-primary-600 hover:text-primary-700 text-sm">编辑</button>
+              <button @click="deleteNotice(notice)" class="text-red-600 hover:text-red-700 text-sm">删除</button>
             </td>
           </tr>
         </tbody>
@@ -112,36 +122,45 @@ onMounted(fetchNotices)
     </div>
 
     <!-- Modal -->
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-lg">
-        <h2 class="text-lg font-semibold mb-4">{{ editingNotice.id ? '编辑' : '添加' }}公告</h2>
-        
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-gray-600 mb-1">标题</label>
-            <input v-model="editingNotice.title" type="text" class="w-full px-4 py-2 border rounded-xl" />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-600 mb-1">内容</label>
-            <textarea v-model="editingNotice.content" rows="6" class="w-full px-4 py-2 border rounded-xl"></textarea>
-          </div>
-          <div class="flex gap-4">
-            <div class="flex-1">
-              <label class="block text-sm text-gray-600 mb-1">排序</label>
-              <input v-model.number="editingNotice.sort" type="number" class="w-full px-4 py-2 border rounded-xl" />
+    <Teleport to="body">
+      <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/30" @click="showModal = false"></div>
+        <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+          <h3 class="text-lg font-bold mb-4">{{ editingNotice?.id ? '编辑公告' : '添加公告' }}</h3>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">标题</label>
+              <input v-model="editingNotice!.title" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
             </div>
-            <div class="flex items-center gap-2 pt-6">
-              <input v-model="editingNotice.show" type="checkbox" id="show" class="rounded" />
-              <label for="show" class="text-sm text-gray-600">显示</label>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">内容</label>
+              <textarea v-model="editingNotice!.content" rows="5" class="w-full px-4 py-2 border border-gray-200 rounded-xl"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">图片 URL</label>
+              <input v-model="editingNotice!.img_url" type="text" placeholder="可选" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">排序</label>
+                <input v-model.number="editingNotice!.sort" type="number" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+              <div class="flex items-center">
+                <label class="flex items-center gap-2 mt-6">
+                  <input v-model="editingNotice!.show" type="checkbox" class="rounded" />
+                  <span class="text-sm">显示</span>
+                </label>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="flex justify-end gap-3 mt-6">
-          <button @click="showModal = false" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl">取消</button>
-          <button @click="saveNotice" class="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600">保存</button>
+          <div class="flex gap-3 mt-6">
+            <button @click="showModal = false" class="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50">取消</button>
+            <button @click="saveNotice" class="flex-1 px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600">保存</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>

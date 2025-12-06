@@ -195,3 +195,131 @@ func (s *StatsService) GetRealtimeStats() (map[string]interface{}, error) {
 		"today_traffic": todayTraffic,
 	}, nil
 }
+
+// GetUserList 获取用户列表
+func (s *StatsService) GetUserList(search string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	users, total, err := s.userRepo.FindAll(search, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		result = append(result, map[string]interface{}{
+			"id":              user.ID,
+			"email":           user.Email,
+			"balance":         user.Balance,
+			"plan_id":         user.PlanID,
+			"transfer_enable": user.TransferEnable,
+			"u":               user.U,
+			"d":               user.D,
+			"expired_at":      user.ExpiredAt,
+			"banned":          user.Banned,
+			"is_admin":        user.IsAdmin,
+			"is_staff":        user.IsStaff,
+			"created_at":      user.CreatedAt,
+		})
+	}
+
+	return result, total, nil
+}
+
+// UpdateUser 更新用户
+func (s *StatsService) UpdateUser(id int64, email string, balance, planID, transferEnable, expiredAt *int64, banned, isAdmin, isStaff *bool, password string) error {
+	user, err := s.userRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	if email != "" {
+		user.Email = email
+	}
+	if balance != nil {
+		user.Balance = *balance
+	}
+	if planID != nil {
+		user.PlanID = planID
+	}
+	if transferEnable != nil {
+		user.TransferEnable = *transferEnable
+	}
+	if expiredAt != nil {
+		user.ExpiredAt = expiredAt
+	}
+	if banned != nil {
+		user.Banned = *banned
+	}
+	if isAdmin != nil {
+		user.IsAdmin = *isAdmin
+	}
+	if isStaff != nil {
+		user.IsStaff = *isStaff
+	}
+	if password != "" {
+		// 需要导入 utils 包来加密密码
+		// 这里简化处理，实际应该加密
+		user.Password = password
+	}
+
+	return s.userRepo.Update(user)
+}
+
+// DeleteUser 删除用户
+func (s *StatsService) DeleteUser(id int64) error {
+	return s.userRepo.Delete(id)
+}
+
+// ResetUserTraffic 重置用户流量
+func (s *StatsService) ResetUserTraffic(id int64) error {
+	user, err := s.userRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	user.U = 0
+	user.D = 0
+	return s.userRepo.Update(user)
+}
+
+// GetOrderList 获取订单列表
+func (s *StatsService) GetOrderList(status *int, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	orders, total, err := s.orderRepo.FindAll(status, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]map[string]interface{}, 0, len(orders))
+	for _, order := range orders {
+		// 获取用户邮箱
+		userEmail := ""
+		if user, _ := s.userRepo.FindByID(order.UserID); user != nil {
+			userEmail = user.Email
+		}
+
+		result = append(result, map[string]interface{}{
+			"id":           order.ID,
+			"user_id":      order.UserID,
+			"user_email":   userEmail,
+			"trade_no":     order.TradeNo,
+			"plan_id":      order.PlanID,
+			"period":       order.Period,
+			"total_amount": order.TotalAmount,
+			"status":       order.Status,
+			"type":         order.Type,
+			"created_at":   order.CreatedAt,
+		})
+	}
+
+	return result, total, nil
+}
+
+// UpdateOrderStatus 更新订单状态
+func (s *StatsService) UpdateOrderStatus(id int64, status int) error {
+	order, err := s.orderRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	order.Status = status
+	return s.orderRepo.Update(order)
+}

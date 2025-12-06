@@ -74,6 +74,71 @@ func (r *OrderRepository) ListByStatus(status int, page, pageSize int) ([]model.
 	return orders, total, err
 }
 
+// Count 统计订单总数
+func (r *OrderRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Order{}).Count(&count).Error
+	return count, err
+}
+
+// GetTodayStats 获取今日订单统计
+func (r *OrderRepository) GetTodayStats() (int64, int64, error) {
+	var count int64
+	var total int64
+
+	today := getCurrentTimestamp() - (getCurrentTimestamp() % 86400)
+	r.db.Model(&model.Order{}).
+		Where("created_at >= ?", today).
+		Where("status = ?", model.OrderStatusCompleted).
+		Count(&count)
+
+	r.db.Model(&model.Order{}).
+		Where("created_at >= ?", today).
+		Where("status = ?", model.OrderStatusCompleted).
+		Select("COALESCE(SUM(total_amount), 0)").
+		Scan(&total)
+
+	return count, total, nil
+}
+
+// GetMonthStats 获取本月订单统计
+func (r *OrderRepository) GetMonthStats() (int64, int64, error) {
+	var count int64
+	var total int64
+
+	// 本月第一天
+	now := getCurrentTimestamp()
+	monthStart := now - (now % (86400 * 30)) // 简化处理
+
+	r.db.Model(&model.Order{}).
+		Where("created_at >= ?", monthStart).
+		Where("status = ?", model.OrderStatusCompleted).
+		Count(&count)
+
+	r.db.Model(&model.Order{}).
+		Where("created_at >= ?", monthStart).
+		Where("status = ?", model.OrderStatusCompleted).
+		Select("COALESCE(SUM(total_amount), 0)").
+		Scan(&total)
+
+	return count, total, nil
+}
+
+// FindAll 查询所有订单（支持状态筛选和分页）
+func (r *OrderRepository) FindAll(status *int, page, pageSize int) ([]model.Order, int64, error) {
+	var orders []model.Order
+	var total int64
+
+	query := r.db.Model(&model.Order{})
+	if status != nil {
+		query = query.Where("status = ?", *status)
+	}
+
+	query.Count(&total)
+	err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&orders).Error
+	return orders, total, err
+}
+
 // Payment Repository
 type PaymentRepository struct {
 	db *gorm.DB

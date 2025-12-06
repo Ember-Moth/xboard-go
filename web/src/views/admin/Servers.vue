@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { api } from '@/api'
+import api from '@/api'
 
 interface Server {
   id: number
@@ -11,6 +11,7 @@ interface Server {
   rate: number
   show: boolean
   tags: string[]
+  group_id: number[]
   protocol_settings?: Record<string, any>
 }
 
@@ -42,15 +43,13 @@ const serverTypes = [
   { value: 'trojan', label: 'Trojan' },
   { value: 'hysteria', label: 'Hysteria2' },
   { value: 'tuic', label: 'TUIC' },
-  { value: 'anytls', label: 'AnyTLS' },
 ]
 
 const fetchServers = async () => {
   loading.value = true
   try {
-    const res = await api.get('/admin/servers')
+    const res = await api.get('/api/v2/admin/servers')
     servers.value = res.data.data || []
-    // 获取每个服务器的状态
     servers.value.forEach(server => {
       fetchServerStatus(server.id)
     })
@@ -63,7 +62,7 @@ const fetchServers = async () => {
 
 const fetchServerStatus = async (serverId: number) => {
   try {
-    const res = await api.get(`/admin/server/${serverId}/status`)
+    const res = await api.get(`/api/v2/admin/server/${serverId}/status`)
     serverStatuses.value[serverId] = res.data.data
   } catch (e) {
     serverStatuses.value[serverId] = { online: false, error: 'Failed to fetch status' }
@@ -73,7 +72,7 @@ const fetchServerStatus = async (serverId: number) => {
 const syncServer = async (serverId: number) => {
   syncing.value = serverId
   try {
-    await api.post(`/admin/server/${serverId}/sync`)
+    await api.post(`/api/v2/admin/server/${serverId}/sync`)
     await fetchServerStatus(serverId)
   } catch (e: any) {
     alert(e.response?.data?.error || '同步失败')
@@ -90,29 +89,24 @@ const openCreateModal = () => {
     port: '',
     rate: 1,
     show: true,
-    protocol_settings: {
-      ssmapi_url: ''
-    }
+    group_id: [],
+    protocol_settings: {}
   }
   showModal.value = true
 }
 
 const openEditModal = (server: Server) => {
-  editingServer.value = { 
-    ...server,
-    protocol_settings: server.protocol_settings || { ssmapi_url: '' }
-  }
+  editingServer.value = { ...server }
   showModal.value = true
 }
 
 const saveServer = async () => {
   if (!editingServer.value) return
-
   try {
     if (editingServer.value.id) {
-      await api.put(`/admin/server/${editingServer.value.id}`, editingServer.value)
+      await api.put(`/api/v2/admin/server/${editingServer.value.id}`, editingServer.value)
     } else {
-      await api.post('/admin/server', editingServer.value)
+      await api.post('/api/v2/admin/server', editingServer.value)
     }
     showModal.value = false
     fetchServers()
@@ -123,9 +117,8 @@ const saveServer = async () => {
 
 const deleteServer = async (server: Server) => {
   if (!confirm(`确定要删除节点 "${server.name}" 吗？`)) return
-
   try {
-    await api.delete(`/admin/server/${server.id}`)
+    await api.delete(`/api/v2/admin/server/${server.id}`)
     fetchServers()
   } catch (e: any) {
     alert(e.response?.data?.error || '删除失败')
@@ -148,30 +141,28 @@ onMounted(fetchServers)
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">节点管理</h1>
-        <p class="text-gray-500 mt-1">管理代理节点，支持 sing-box SSMAPI</p>
+        <p class="text-gray-500 mt-1">管理代理节点</p>
       </div>
       <button @click="openCreateModal" class="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition">
         添加节点
       </button>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div v-if="loading" class="text-center py-12 text-gray-500">
-        加载中...
-      </div>
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div v-if="loading" class="text-center py-12 text-gray-500">加载中...</div>
 
       <table v-else class="w-full">
         <thead class="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
-            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">类型</th>
-            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">地址</th>
-            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">流量</th>
-            <th class="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">类型</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">地址</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">流量</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody class="divide-y divide-gray-200">
           <tr v-for="server in servers" :key="server.id" class="hover:bg-gray-50">
             <td class="px-6 py-4">
               <div class="font-medium text-gray-900">{{ server.name }}</div>
@@ -180,9 +171,7 @@ onMounted(fetchServers)
             <td class="px-6 py-4">
               <span class="px-2 py-1 bg-blue-100 text-blue-600 rounded-full text-xs">{{ server.type }}</span>
             </td>
-            <td class="px-6 py-4 text-sm text-gray-500">
-              {{ server.host }}:{{ server.port }}
-            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">{{ server.host }}:{{ server.port }}</td>
             <td class="px-6 py-4">
               <div v-if="serverStatuses[server.id]">
                 <span v-if="serverStatuses[server.id].online" class="flex items-center gap-1.5">
@@ -193,9 +182,6 @@ onMounted(fetchServers)
                   <span class="w-2 h-2 bg-red-500 rounded-full"></span>
                   <span class="text-red-600 text-sm">离线</span>
                 </span>
-                <div v-if="serverStatuses[server.id].users_count !== undefined" class="text-xs text-gray-400 mt-1">
-                  {{ serverStatuses[server.id].users_count }} 用户
-                </div>
               </div>
               <span v-else class="text-gray-400 text-sm">检测中...</span>
             </td>
@@ -207,19 +193,11 @@ onMounted(fetchServers)
               <span v-else class="text-gray-400">-</span>
             </td>
             <td class="px-6 py-4 text-right space-x-2">
-              <button 
-                @click="syncServer(server.id)" 
-                :disabled="syncing === server.id"
-                class="text-green-600 hover:text-green-700 text-sm disabled:opacity-50"
-              >
+              <button @click="syncServer(server.id)" :disabled="syncing === server.id" class="text-green-600 hover:text-green-700 text-sm disabled:opacity-50">
                 {{ syncing === server.id ? '同步中...' : '同步' }}
               </button>
-              <button @click="openEditModal(server)" class="text-primary-600 hover:text-primary-700 text-sm">
-                编辑
-              </button>
-              <button @click="deleteServer(server)" class="text-red-600 hover:text-red-700 text-sm">
-                删除
-              </button>
+              <button @click="openEditModal(server)" class="text-primary-600 hover:text-primary-700 text-sm">编辑</button>
+              <button @click="deleteServer(server)" class="text-red-600 hover:text-red-700 text-sm">删除</button>
             </td>
           </tr>
         </tbody>
@@ -231,50 +209,33 @@ onMounted(fetchServers)
       <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/30" @click="showModal = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-          <h3 class="text-lg font-bold mb-4">
-            {{ editingServer?.id ? '编辑节点' : '添加节点' }}
-          </h3>
+          <h3 class="text-lg font-bold mb-4">{{ editingServer?.id ? '编辑节点' : '添加节点' }}</h3>
           
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
-              <input v-model="editingServer!.name" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="editingServer!.name" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">类型</label>
-              <select v-model="editingServer!.type" class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+              <select v-model="editingServer!.type" class="w-full px-4 py-2 border border-gray-200 rounded-xl">
                 <option v-for="t in serverTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
               </select>
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">地址</label>
-                <input v-model="editingServer!.host" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                <input v-model="editingServer!.host" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
-                <input v-model="editingServer!.port" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                <input v-model="editingServer!.port" type="text" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
               </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">倍率</label>
-              <input v-model.number="editingServer!.rate" type="number" step="0.1" class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model.number="editingServer!.rate" type="number" step="0.1" class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
             </div>
-            
-            <div class="border-t pt-4 mt-4">
-              <h4 class="text-sm font-medium text-gray-700 mb-3">SSMAPI 配置</h4>
-              <div>
-                <label class="block text-sm text-gray-600 mb-1">SSMAPI URL</label>
-                <input 
-                  v-model="editingServer!.protocol_settings!.ssmapi_url" 
-                  type="text" 
-                  placeholder="http://节点IP:9000/shadowsocks"
-                  class="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                />
-                <p class="text-xs text-gray-400 mt-1">sing-box SSMAPI 地址，格式：http://IP:端口/协议路径</p>
-              </div>
-            </div>
-
             <div class="flex items-center gap-2">
               <input v-model="editingServer!.show" type="checkbox" id="show" class="rounded" />
               <label for="show" class="text-sm text-gray-700">显示节点</label>
@@ -282,8 +243,8 @@ onMounted(fetchServers)
           </div>
 
           <div class="flex gap-3 mt-6">
-            <button @click="showModal = false" class="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition">取消</button>
-            <button @click="saveServer" class="flex-1 px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition">保存</button>
+            <button @click="showModal = false" class="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50">取消</button>
+            <button @click="saveServer" class="flex-1 px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600">保存</button>
           </div>
         </div>
       </div>

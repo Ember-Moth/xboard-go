@@ -57,22 +57,28 @@ func (s *PlanService) Delete(id int64) error {
 
 // GetPlanInfo 获取套餐信息（包含价格列表）
 func (s *PlanService) GetPlanInfo(plan *model.Plan) map[string]interface{} {
-	periods := []string{
-		model.PeriodMonthly,
-		model.PeriodQuarterly,
-		model.PeriodHalfYearly,
-		model.PeriodYearly,
-		model.PeriodTwoYearly,
-		model.PeriodThreeYearly,
-		model.PeriodOnetime,
-	}
-
 	prices := make(map[string]int64)
-	for _, period := range periods {
-		price := plan.GetPriceByPeriod(period)
-		if price > 0 {
-			prices[period] = price
-		}
+	
+	if plan.MonthPrice != nil && *plan.MonthPrice > 0 {
+		prices[model.PeriodMonthly] = *plan.MonthPrice
+	}
+	if plan.QuarterPrice != nil && *plan.QuarterPrice > 0 {
+		prices[model.PeriodQuarterly] = *plan.QuarterPrice
+	}
+	if plan.HalfYearPrice != nil && *plan.HalfYearPrice > 0 {
+		prices[model.PeriodHalfYearly] = *plan.HalfYearPrice
+	}
+	if plan.YearPrice != nil && *plan.YearPrice > 0 {
+		prices[model.PeriodYearly] = *plan.YearPrice
+	}
+	if plan.TwoYearPrice != nil && *plan.TwoYearPrice > 0 {
+		prices[model.PeriodTwoYearly] = *plan.TwoYearPrice
+	}
+	if plan.ThreeYearPrice != nil && *plan.ThreeYearPrice > 0 {
+		prices[model.PeriodThreeYearly] = *plan.ThreeYearPrice
+	}
+	if plan.OnetimePrice != nil && *plan.OnetimePrice > 0 {
+		prices[model.PeriodOnetime] = *plan.OnetimePrice
 	}
 
 	return map[string]interface{}{
@@ -86,6 +92,7 @@ func (s *PlanService) GetPlanInfo(plan *model.Plan) map[string]interface{} {
 		"sell":                 plan.Sell,
 		"renew":                plan.Renew,
 		"content":              plan.Content,
+		"sort":                 plan.Sort,
 		"prices":               prices,
 		"reset_traffic_method": plan.ResetTrafficMethod,
 		"capacity_limit":       plan.CapacityLimit,

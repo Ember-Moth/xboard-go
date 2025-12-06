@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { api } from '@/api'
+import api from '@/api'
 
 interface KnowledgeItem {
   id: number
@@ -23,7 +23,7 @@ const filteredItems = computed(() => {
 
 const fetchCategories = async () => {
   try {
-    const res = await api.get('/knowledge/categories')
+    const res = await api.get('/api/v1/knowledge/categories')
     categories.value = res.data.data || []
   } catch (e) {
     console.error(e)
@@ -33,7 +33,7 @@ const fetchCategories = async () => {
 const fetchItems = async () => {
   loading.value = true
   try {
-    const res = await api.get('/knowledge', {
+    const res = await api.get('/api/v1/knowledge', {
       params: { category: selectedCategory.value }
     })
     items.value = res.data.data || []

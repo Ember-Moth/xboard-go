@@ -26,6 +26,26 @@ func (s *NoticeService) GetVisible() ([]model.Notice, error) {
 	return s.noticeRepo.GetVisible()
 }
 
+// GetPublic 获取公开公告（用于前端展示）
+func (s *NoticeService) GetPublic() ([]map[string]interface{}, error) {
+	notices, err := s.noticeRepo.GetVisible()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]interface{}, 0, len(notices))
+	for _, notice := range notices {
+		result = append(result, map[string]interface{}{
+			"id":         notice.ID,
+			"title":      notice.Title,
+			"content":    notice.Content,
+			"img_url":    notice.ImgURL,
+			"created_at": notice.CreatedAt,
+		})
+	}
+	return result, nil
+}
+
 // GetByID 根据 ID 获取公告
 func (s *NoticeService) GetByID(id int64) (*model.Notice, error) {
 	return s.noticeRepo.FindByID(id)
@@ -97,6 +117,34 @@ func (s *KnowledgeService) Delete(id int64) error {
 }
 
 // GetCategories 获取所有分类
-func (s *KnowledgeService) GetCategories(language string) ([]string, error) {
-	return s.knowledgeRepo.GetCategories(language)
+func (s *KnowledgeService) GetCategories() ([]string, error) {
+	return s.knowledgeRepo.GetCategories("")
+}
+
+// GetPublic 获取公开知识库文章
+func (s *KnowledgeService) GetPublic(category string) ([]map[string]interface{}, error) {
+	var items []model.Knowledge
+	var err error
+
+	if category != "" {
+		items, err = s.knowledgeRepo.GetByCategory(category, "")
+	} else {
+		items, err = s.knowledgeRepo.GetVisible("")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		result = append(result, map[string]interface{}{
+			"id":       item.ID,
+			"title":    item.Title,
+			"body":     item.Body,
+			"category": item.Category,
+			"language": item.Language,
+		})
+	}
+	return result, nil
 }

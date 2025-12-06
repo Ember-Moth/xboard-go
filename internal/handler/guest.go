@@ -106,3 +106,41 @@ func PassportLogin(services *service.Services) gin.HandlerFunc {
 func PassportRegister(services *service.Services) gin.HandlerFunc {
 	return GuestRegister(services)
 }
+
+
+// GetNotices 获取公告列表
+func GetNotices(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		notices, err := services.Notice.GetPublic()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": notices})
+	}
+}
+
+// GetKnowledge 获取知识库列表
+func GetKnowledge(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		category := c.Query("category")
+		items, err := services.Knowledge.GetPublic(category)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": items})
+	}
+}
+
+// GetKnowledgeCategories 获取知识库分类
+func GetKnowledgeCategories(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		categories, err := services.Knowledge.GetCategories()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": categories})
+	}
+}

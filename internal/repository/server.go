@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+
 	"xboard/internal/model"
 
 	"gorm.io/gorm"
@@ -55,8 +57,20 @@ func (r *ServerRepository) GetAllServers() ([]model.Server, error) {
 func (r *ServerRepository) GetAvailableServers(groupID int64) ([]model.Server, error) {
 	var servers []model.Server
 	// 使用 JSON_CONTAINS 查询包含指定 group_id 的服务器
+	// JSON_CONTAINS 需要传入 JSON 格式的值
+	groupIDJSON := fmt.Sprintf("[%d]", groupID)
 	err := r.db.
-		Where("JSON_CONTAINS(group_ids, ?)", groupID).
+		Where("(JSON_CONTAINS(group_ids, ?) OR group_ids IS NULL OR group_ids = '[]' OR group_ids = '' OR JSON_LENGTH(group_ids) = 0)", groupIDJSON).
+		Where("`show` = ?", true).
+		Order("sort ASC").
+		Find(&servers).Error
+	return servers, err
+}
+
+// GetPublicServers 获取所有公开的服务器（不限制用户组）
+func (r *ServerRepository) GetPublicServers() ([]model.Server, error) {
+	var servers []model.Server
+	err := r.db.
 		Where("`show` = ?", true).
 		Order("sort ASC").
 		Find(&servers).Error
@@ -77,6 +91,13 @@ func (r *ServerRepository) List(page, pageSize int) ([]model.Server, int64, erro
 	r.db.Model(&model.Server{}).Count(&total)
 	err := r.db.Order("sort ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&servers).Error
 	return servers, total, err
+}
+
+// Count 统计服务器总数
+func (r *ServerRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Server{}).Count(&count).Error
+	return count, err
 }
 
 // ServerGroup Repository

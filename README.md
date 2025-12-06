@@ -1,46 +1,140 @@
 # XBoard Go
 
-XBoard 的 Go 语言重写版本，后端节点使用 sing-box server。
+XBoard Go 是一个用 Go 语言重写的代理面板系统，支持多种代理协议。
 
-## ✨ 特性
+## 功能特性
 
-- 🚀 Go 语言重写，高性能低资源占用
-- 🎨 Vue3 + TypeScript 现代化前端，马卡龙配色主题
-- 📦 支持 sing-box、Clash、Surge、Quantumult X 等多种订阅格式
-- 🔐 支持 AnyTLS、SS2022、VMess、VLESS、Trojan 等协议
-- 📧 邮件通知系统
-- 🤖 Telegram Bot 集成
-- 🎫 完整工单系统
-- 💾 兼容原版 XBoard 数据库，可平滑迁移
+- 用户管理：注册、登录、密码修改、流量统计
+- 套餐管理：多周期定价、流量限制、速度限制
+- 订单管理：创建订单、支付、取消
+- 节点管理：支持 Shadowsocks、VMess、VLESS、Trojan、Hysteria2、TUIC 等协议
+- 订阅管理：支持 Clash、sing-box、Base64 等多种订阅格式
+- 工单系统：用户提交工单、管理员回复
+- 邀请返利：邀请码、佣金统计
+- 管理后台：完整的后台管理功能
 
 ## 快速开始
 
-### 使用 Docker Compose（推荐）
+### 1. 配置文件
+
+复制配置文件并修改：
 
 ```bash
 cp configs/config.example.yaml configs/config.yaml
-# 编辑 config.yaml 配置数据库等信息
-docker-compose up -d
 ```
 
-### 手动部署
+编辑 `configs/config.yaml`，配置数据库、Redis、JWT 等信息。
+
+### 2. 编译运行
 
 ```bash
-# 后端
-go mod tidy
-go build -o xboard cmd/server/main.go
-./xboard -config configs/config.yaml
+# 编译后端
+go build -o xboard ./cmd/server
 
-# 前端
+# 编译前端
 cd web
 npm install
 npm run build
+cd ..
+
+# 运行
+./xboard -config configs/config.yaml
 ```
 
-## 文档
+### 3. 初始管理员
 
-详细文档请参考 [docs/README.md](docs/README.md)
+在 `configs/config.yaml` 中配置初始管理员：
 
-## License
+```yaml
+admin:
+  email: "admin@example.com"
+  password: "your_password"
+```
 
-MIT
+启动后会自动创建管理员账号。
+
+## 配置说明
+
+### 数据库配置
+
+支持 MySQL 和 SQLite：
+
+```yaml
+database:
+  driver: "mysql"  # mysql 或 sqlite
+  host: "127.0.0.1"
+  port: 3306
+  database: "xboard"
+  username: "root"
+  password: "your_password"
+```
+
+### Redis 配置
+
+```yaml
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+```
+
+### JWT 配置
+
+```yaml
+jwt:
+  secret: "change-this-to-a-random-string"
+  expire_hour: 24
+```
+
+## API 文档
+
+### 用户端 API
+
+- `POST /api/v1/guest/register` - 用户注册
+- `POST /api/v1/guest/login` - 用户登录
+- `GET /api/v1/guest/plans` - 获取套餐列表
+- `GET /api/v1/user/info` - 获取用户信息
+- `GET /api/v1/user/subscribe` - 获取订阅信息
+- `GET /api/v1/client/subscribe` - 客户端订阅
+
+### 管理端 API
+
+- `GET /api/v2/admin/stats/overview` - 统计概览
+- `GET /api/v2/admin/users` - 用户列表
+- `GET /api/v2/admin/servers` - 节点列表
+- `GET /api/v2/admin/plans` - 套餐列表
+- `GET /api/v2/admin/orders` - 订单列表
+- `GET /api/v2/admin/tickets` - 工单列表
+
+## 目录结构
+
+```
+xboard-go/
+├── cmd/server/          # 主程序入口
+├── configs/             # 配置文件
+├── internal/
+│   ├── config/          # 配置加载
+│   ├── handler/         # HTTP 处理器
+│   ├── middleware/      # 中间件
+│   ├── model/           # 数据模型
+│   ├── protocol/        # 订阅协议生成
+│   ├── repository/      # 数据访问层
+│   └── service/         # 业务逻辑层
+├── pkg/
+│   ├── cache/           # Redis 缓存
+│   ├── database/        # 数据库连接
+│   └── utils/           # 工具函数
+└── web/                 # 前端代码
+    ├── src/
+    │   ├── api/         # API 调用
+    │   ├── layouts/     # 布局组件
+    │   ├── router/      # 路由配置
+    │   ├── stores/      # 状态管理
+    │   └── views/       # 页面组件
+    └── dist/            # 编译输出
+```
+
+## 许可证
+
+MIT License

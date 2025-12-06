@@ -78,6 +78,11 @@ func (s *OrderService) CreateOrder(userID, planID int64, period string) (*model.
 	return order, nil
 }
 
+// GetByID 根据 ID 获取订单
+func (s *OrderService) GetByID(id int64) (*model.Order, error) {
+	return s.orderRepo.FindByID(id)
+}
+
 // GetByTradeNo 根据交易号获取订单
 func (s *OrderService) GetByTradeNo(tradeNo string) (*model.Order, error) {
 	return s.orderRepo.FindByTradeNo(tradeNo)

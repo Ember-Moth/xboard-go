@@ -37,11 +37,16 @@ func (s *ServerService) GetAllServers() ([]model.Server, error) {
 
 // GetAvailableServers 获取用户可用的服务器列表
 func (s *ServerService) GetAvailableServers(user *model.User) ([]ServerInfo, error) {
-	if user.GroupID == nil {
-		return []ServerInfo{}, nil
+	var servers []model.Server
+	var err error
+
+	if user.GroupID != nil {
+		servers, err = s.serverRepo.GetAvailableServers(*user.GroupID)
+	} else {
+		// 没有用户组的用户获取所有公开节点
+		servers, err = s.serverRepo.GetPublicServers()
 	}
 
-	servers, err := s.serverRepo.GetAvailableServers(*user.GroupID)
 	if err != nil {
 		return nil, err
 	}
@@ -251,4 +256,19 @@ func (s *ServerService) FindServer(serverID int64, serverType string) (*model.Se
 		return s.serverRepo.FindByCode(serverType, strconv.FormatInt(serverID, 10))
 	}
 	return s.serverRepo.FindByID(serverID)
+}
+
+// CreateServer 创建服务器
+func (s *ServerService) CreateServer(server *model.Server) error {
+	return s.serverRepo.Create(server)
+}
+
+// UpdateServer 更新服务器
+func (s *ServerService) UpdateServer(server *model.Server) error {
+	return s.serverRepo.Update(server)
+}
+
+// DeleteServer 删除服务器
+func (s *ServerService) DeleteServer(id int64) error {
+	return s.serverRepo.Delete(id)
 }

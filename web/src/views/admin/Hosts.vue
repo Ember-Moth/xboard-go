@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { api } from '@/api'
+import api from '@/api'
 
 interface Host {
   id: number
@@ -52,7 +52,7 @@ const nodeTypes = [
 const fetchHosts = async () => {
   loading.value = true
   try {
-    const res = await api.get('/admin/hosts')
+    const res = await api.get('/api/v2/admin/hosts')
     hosts.value = res.data.data || []
   } finally {
     loading.value = false
@@ -60,7 +60,7 @@ const fetchHosts = async () => {
 }
 
 const fetchNodes = async (hostId: number) => {
-  const res = await api.get('/admin/nodes', { params: { host_id: hostId } })
+  const res = await api.get('/api/v2/admin/nodes', { params: { host_id: hostId } })
   nodes.value = res.data.data || []
 }
 
@@ -72,7 +72,7 @@ const selectHost = (host: Host) => {
 const createHost = async () => {
   if (!newHostName.value) return
   try {
-    const res = await api.post('/admin/host', { name: newHostName.value })
+    const res = await api.post('/api/v2/admin/host', { name: newHostName.value })
     currentToken.value = res.data.data.token
     showHostModal.value = false
     showTokenModal.value = true
@@ -85,7 +85,7 @@ const createHost = async () => {
 
 const deleteHost = async (host: Host) => {
   if (!confirm(`确定删除主机 "${host.name}"？将同时删除所有节点。`)) return
-  await api.delete(`/admin/host/${host.id}`)
+  await api.delete(`/api/v2/admin/host/${host.id}`)
   if (selectedHost.value?.id === host.id) {
     selectedHost.value = null
     nodes.value = []
@@ -95,14 +95,14 @@ const deleteHost = async (host: Host) => {
 
 const resetToken = async (host: Host) => {
   if (!confirm('重置后需要重新配置 Agent')) return
-  const res = await api.post(`/admin/host/${host.id}/reset_token`)
+  const res = await api.post(`/api/v2/admin/host/${host.id}/reset_token`)
   currentToken.value = res.data.data.token
   showTokenModal.value = true
   fetchHosts()
 }
 
 const showConfig = async (host: Host) => {
-  const res = await api.get(`/admin/host/${host.id}/config`)
+  const res = await api.get(`/api/v2/admin/host/${host.id}/config`)
   configData.value = JSON.stringify(res.data.data, null, 2)
   showConfigModal.value = true
 }
@@ -113,7 +113,7 @@ const openNodeModal = async (node?: ServerNode) => {
     editingNode.value = { ...node }
   } else {
     // 获取默认配置
-    const res = await api.get('/admin/node/default', { params: { type: 'shadowsocks' } })
+    const res = await api.get('/api/v2/admin/node/default', { params: { type: 'shadowsocks' } })
     editingNode.value = {
       host_id: selectedHost.value!.id,
       type: 'shadowsocks',
@@ -127,7 +127,7 @@ const openNodeModal = async (node?: ServerNode) => {
 }
 
 const onTypeChange = async () => {
-  const res = await api.get('/admin/node/default', { params: { type: editingNode.value.type } })
+  const res = await api.get('/api/v2/admin/node/default', { params: { type: editingNode.value.type } })
   const defaults = res.data.data
   editingNode.value = {
     ...editingNode.value,
@@ -141,9 +141,9 @@ const onTypeChange = async () => {
 const saveNode = async () => {
   try {
     if (editingNode.value.id) {
-      await api.put(`/admin/node/${editingNode.value.id}`, editingNode.value)
+      await api.put(`/api/v2/admin/node/${editingNode.value.id}`, editingNode.value)
     } else {
-      await api.post('/admin/node', editingNode.value)
+      await api.post('/api/v2/admin/node', editingNode.value)
     }
     showNodeModal.value = false
     fetchNodes(selectedHost.value!.id)
@@ -154,7 +154,7 @@ const saveNode = async () => {
 
 const deleteNode = async (node: ServerNode) => {
   if (!confirm(`确定删除节点 "${node.name}"？`)) return
-  await api.delete(`/admin/node/${node.id}`)
+  await api.delete(`/api/v2/admin/node/${node.id}`)
   fetchNodes(selectedHost.value!.id)
 }
 

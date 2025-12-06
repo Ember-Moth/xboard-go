@@ -1,9 +1,29 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
+import api from '@/api'
 import dayjs from 'dayjs'
 
 const userStore = useUserStore()
+
+interface Notice {
+  id: number
+  title: string
+  content: string
+}
+
+const notices = ref<Notice[]>([])
+
+const fetchNotices = async () => {
+  try {
+    const res = await api.get('/api/v1/notices')
+    notices.value = res.data.data || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+onMounted(fetchNotices)
 
 const formatBytes = (bytes: number) => {
   if (bytes === 0) return '0 B'
@@ -133,10 +153,13 @@ const daysLeft = computed(() => {
     <!-- Announcements -->
     <div class="card">
       <h2 class="text-lg font-semibold mb-4">📢 公告</h2>
-      <div class="space-y-3">
-        <div class="p-4 rounded-xl bg-surface-50 border-l-4 border-primary-500">
-          <h3 class="font-medium">欢迎使用 XBoard</h3>
-          <p class="text-sm text-gray-500 mt-1">感谢您的支持，祝您使用愉快！</p>
+      <div v-if="notices.length === 0" class="text-center py-4 text-gray-500">
+        暂无公告
+      </div>
+      <div v-else class="space-y-3">
+        <div v-for="notice in notices" :key="notice.id" class="p-4 rounded-xl bg-surface-50 border-l-4 border-primary-500">
+          <h3 class="font-medium">{{ notice.title }}</h3>
+          <p class="text-sm text-gray-500 mt-1">{{ notice.content }}</p>
         </div>
       </div>
     </div>

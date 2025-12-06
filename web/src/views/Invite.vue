@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { api } from '@/api'
+import api from '@/api'
 
 interface InviteCode {
   id: number
@@ -34,7 +34,7 @@ const inviteUrl = computed(() => {
 const fetchData = async () => {
   loading.value = true
   try {
-    const res = await api.get('/user/invite')
+    const res = await api.get('/api/v1/user/invite')
     codes.value = res.data.data.codes || []
     stats.value = res.data.data.stats || stats.value
   } catch (e) {
@@ -47,7 +47,7 @@ const fetchData = async () => {
 const generateCode = async () => {
   generating.value = true
   try {
-    await api.post('/user/invite/generate')
+    await api.post('/api/v1/user/invite/generate')
     await fetchData()
   } catch (e) {
     console.error(e)
@@ -60,7 +60,7 @@ const withdraw = async () => {
   if (stats.value.commission_balance <= 0) return
   withdrawing.value = true
   try {
-    await api.post('/user/invite/withdraw')
+    await api.post('/api/v1/user/invite/withdraw')
     await fetchData()
   } catch (e) {
     console.error(e)

@@ -2,23 +2,29 @@ package model
 
 // Plan 套餐模型
 type Plan struct {
-	ID                 int64   `gorm:"primaryKey;column:id" json:"id"`
-	GroupID            *int64  `gorm:"column:group_id" json:"group_id"`
-	TransferEnable     int64   `gorm:"column:transfer_enable" json:"transfer_enable"`
-	Name               string  `gorm:"column:name" json:"name"`
-	SpeedLimit         *int    `gorm:"column:speed_limit" json:"speed_limit"`
-	DeviceLimit        *int    `gorm:"column:device_limit" json:"device_limit"`
-	Show               bool    `gorm:"column:show;default:false" json:"show"`
-	Sell               bool    `gorm:"column:sell;default:true" json:"sell"`
-	Renew              bool    `gorm:"column:renew;default:true" json:"renew"`
-	Sort               *int    `gorm:"column:sort" json:"sort"`
-	Content            *string `gorm:"column:content;type:text" json:"content"`
-	Prices             JSONMap `gorm:"column:prices;type:json" json:"prices"`
-	Tags               JSONArray `gorm:"column:tags;type:json" json:"tags"`
-	ResetTrafficMethod *int    `gorm:"column:reset_traffic_method" json:"reset_traffic_method"`
-	CapacityLimit      *int    `gorm:"column:capacity_limit" json:"capacity_limit"`
-	CreatedAt          int64   `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt          int64   `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID                 int64     `gorm:"primaryKey;column:id" json:"id"`
+	GroupID            *int64    `gorm:"column:group_id" json:"group_id"`
+	TransferEnable     int64     `gorm:"column:transfer_enable" json:"transfer_enable"`
+	Name               string    `gorm:"column:name" json:"name"`
+	SpeedLimit         *int      `gorm:"column:speed_limit" json:"speed_limit"`
+	DeviceLimit        *int      `gorm:"column:device_limit" json:"device_limit"`
+	Show               bool      `gorm:"column:show;default:false" json:"show"`
+	Sell               bool      `gorm:"column:sell;default:true" json:"sell"`
+	Renew              bool      `gorm:"column:renew;default:true" json:"renew"`
+	Sort               int       `gorm:"column:sort" json:"sort"`
+	Content            string    `gorm:"column:content;type:text" json:"content"`
+	MonthPrice         *int64    `gorm:"column:month_price" json:"month_price"`
+	QuarterPrice       *int64    `gorm:"column:quarter_price" json:"quarter_price"`
+	HalfYearPrice      *int64    `gorm:"column:half_year_price" json:"half_year_price"`
+	YearPrice          *int64    `gorm:"column:year_price" json:"year_price"`
+	TwoYearPrice       *int64    `gorm:"column:two_year_price" json:"two_year_price"`
+	ThreeYearPrice     *int64    `gorm:"column:three_year_price" json:"three_year_price"`
+	OnetimePrice       *int64    `gorm:"column:onetime_price" json:"onetime_price"`
+	ResetPrice         *int64    `gorm:"column:reset_price" json:"reset_price"`
+	ResetTrafficMethod *int      `gorm:"column:reset_traffic_method" json:"reset_traffic_method"`
+	CapacityLimit      *int      `gorm:"column:capacity_limit" json:"capacity_limit"`
+	CreatedAt          int64     `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt          int64     `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (Plan) TableName() string {
@@ -71,17 +77,38 @@ func GetPeriodDays(period string) int {
 
 // GetPriceByPeriod 获取指定周期的价格
 func (p *Plan) GetPriceByPeriod(period string) int64 {
-	if p.Prices == nil {
-		return 0
-	}
-	if price, ok := p.Prices[period]; ok {
-		switch v := price.(type) {
-		case float64:
-			return int64(v)
-		case int64:
-			return v
-		case int:
-			return int64(v)
+	switch period {
+	case PeriodMonthly:
+		if p.MonthPrice != nil {
+			return *p.MonthPrice
+		}
+	case PeriodQuarterly:
+		if p.QuarterPrice != nil {
+			return *p.QuarterPrice
+		}
+	case PeriodHalfYearly:
+		if p.HalfYearPrice != nil {
+			return *p.HalfYearPrice
+		}
+	case PeriodYearly:
+		if p.YearPrice != nil {
+			return *p.YearPrice
+		}
+	case PeriodTwoYearly:
+		if p.TwoYearPrice != nil {
+			return *p.TwoYearPrice
+		}
+	case PeriodThreeYearly:
+		if p.ThreeYearPrice != nil {
+			return *p.ThreeYearPrice
+		}
+	case PeriodOnetime:
+		if p.OnetimePrice != nil {
+			return *p.OnetimePrice
+		}
+	case PeriodResetTraffic:
+		if p.ResetPrice != nil {
+			return *p.ResetPrice
 		}
 	}
 	return 0

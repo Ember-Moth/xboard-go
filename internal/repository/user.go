@@ -120,6 +120,48 @@ func (r *UserRepository) CountByPlanID(planID int64) (int64, error) {
 	return count, err
 }
 
+// Count 统计用户总数
+func (r *UserRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.User{}).Count(&count).Error
+	return count, err
+}
+
+// CountActive 统计活跃用户数
+func (r *UserRepository) CountActive() (int64, error) {
+	var count int64
+	now := time.Now().Unix()
+	err := r.db.Model(&model.User{}).
+		Where("banned = ?", false).
+		Where("(expired_at >= ? OR expired_at IS NULL OR expired_at = 0)", now).
+		Where("plan_id IS NOT NULL").
+		Count(&count).Error
+	return count, err
+}
+
+// CountOnline 统计在线用户数
+func (r *UserRepository) CountOnline(seconds int64) (int64, error) {
+	var count int64
+	threshold := time.Now().Unix() - seconds
+	err := r.db.Model(&model.User{}).Where("t >= ?", threshold).Count(&count).Error
+	return count, err
+}
+
+// FindAll 查询所有用户（支持搜索和分页）
+func (r *UserRepository) FindAll(search string, page, pageSize int) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+
+	query := r.db.Model(&model.User{})
+	if search != "" {
+		query = query.Where("email LIKE ?", "%"+search+"%")
+	}
+
+	query.Count(&total)
+	err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&users).Error
+	return users, total, err
+}
+
 func getCurrentTimestamp() int64 {
 	return time.Now().Unix()
 }

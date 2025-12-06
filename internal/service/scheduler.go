@@ -115,7 +115,7 @@ func (s *SchedulerService) minutelyTasks() {
 func (s *SchedulerService) resetMonthlyTraffic() {
 	log.Println("[Scheduler] Resetting monthly traffic...")
 
-	users, err := s.userRepo.GetUsersNeedTrafficReset(model.ResetTrafficFirstDayMonth)
+	users, err := s.userRepo.GetUsersNeedTrafficReset()
 	if err != nil {
 		log.Printf("[Scheduler] Failed to get users for traffic reset: %v", err)
 		return
@@ -137,8 +137,7 @@ func (s *SchedulerService) sendExpireReminders() {
 	log.Println("[Scheduler] Sending expire reminders...")
 
 	// 获取即将到期的用户（3天内）
-	expireTime := time.Now().Add(3 * 24 * time.Hour).Unix()
-	users, err := s.userRepo.GetUsersExpiringSoon(expireTime)
+	users, err := s.userRepo.GetUsersExpiringSoon(3)
 	if err != nil {
 		log.Printf("[Scheduler] Failed to get expiring users: %v", err)
 		return
@@ -199,8 +198,7 @@ func (s *SchedulerService) cleanExpiredOrders() {
 	log.Println("[Scheduler] Cleaning expired orders...")
 
 	// 取消超过 24 小时未支付的订单
-	expireTime := time.Now().Add(-24 * time.Hour).Unix()
-	count, err := s.orderRepo.CancelExpiredOrders(expireTime)
+	count, err := s.orderRepo.CancelExpiredOrders(24 * 60 * 60)
 	if err != nil {
 		log.Printf("[Scheduler] Failed to cancel expired orders: %v", err)
 		return
@@ -218,7 +216,7 @@ func (s *SchedulerService) generateDailyStats() {
 	recordAt := yesterday.Unix()
 
 	// 统计订单
-	orderCount, orderTotal, _ := s.orderRepo.GetDailyStats(recordAt)
+	orderCount, orderTotal, _ := s.orderRepo.GetDailyStats(recordAt, recordAt+86400)
 
 	// 统计注册
 	registerCount, _ := s.userRepo.CountByDateRange(recordAt, recordAt+86400)
@@ -226,9 +224,9 @@ func (s *SchedulerService) generateDailyStats() {
 	stat := &model.Stat{
 		RecordAt:      recordAt,
 		RecordType:    "d",
-		OrderCount:    orderCount,
+		OrderCount:    int(orderCount),
 		OrderTotal:    orderTotal,
-		RegisterCount: registerCount,
+		RegisterCount: int(registerCount),
 	}
 
 	s.statRepo.CreateOrUpdateStat(stat)

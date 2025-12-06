@@ -1,8 +1,6 @@
 package repository
 
 import (
-	"time"
-
 	"xboard/internal/model"
 
 	"gorm.io/gorm"

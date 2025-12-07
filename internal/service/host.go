@@ -174,7 +174,7 @@ func (s *HostService) buildInbound(node *model.ServerNode) map[string]interface{
 
 	if node.ServerID != nil && *node.ServerID > 0 {
 		// 从绑定的 Server 获取配置
-		server, err := s.serverRepo.GetByID(*node.ServerID)
+		server, err := s.serverRepo.FindByID(*node.ServerID)
 		if err == nil && server != nil {
 			nodeType = server.Type
 			protocolSettings = server.ProtocolSettings
@@ -321,7 +321,7 @@ func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]inte
 	var createdAt int64
 
 	if node.ServerID != nil && *node.ServerID > 0 {
-		server, err := s.serverRepo.GetByID(*node.ServerID)
+		server, err := s.serverRepo.FindByID(*node.ServerID)
 		if err == nil && server != nil {
 			groupIDs = server.GetGroupIDsAsInt64()
 			nodeType = server.Type

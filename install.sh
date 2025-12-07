@@ -1,0 +1,934 @@
+#!/bin/bash
+
+# XBoard 一键安装脚本
+# 支持面板和 Agent 的完整部署
+# 用法: curl -sL https://raw.githubusercontent.com/ZYHUO/xboard-go/main/install.sh | bash
+# 或者: bash install.sh [panel|agent|all]
+
+set -e
+
+VERSION='v1.2.0'
+GITHUB_REPO="ZYHUO/xboard-go"
+GH_PROXY='https://hub.glowp.xyz/'
+INSTALL_DIR="/opt/xboard"
+AGENT_DIR="/opt/xboard-agent"
+TEMP_DIR="/tmp/xboard-install"
+SINGBOX_DIR="/etc/sing-box"
+SINGBOX_DEFAULT_VERSION="1.12.0"
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# 日志函数
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_hint() { echo -e "${BLUE}[HINT]${NC} $1"; }
+log_success() { echo -e "${PURPLE}[SUCCESS]${NC} $1"; }
+
+# 清理函数
+cleanup() {
+    rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# 显示 Banner
+show_banner() {
+    echo -e "${CYAN}"
+    cat << 'EOF'
+ ██╗  ██╗██████╗  ██████╗  █████╗ ██████╗ ██████╗ 
+ ╚██╗██╔╝██╔══██╗██╔═══██╗██╔══██╗██╔══██╗██╔══██╗
+  ╚███╔╝ ██████╔╝██║   ██║███████║██████╔╝██║  ██║
+  ██╔██╗ ██╔══██╗██║   ██║██╔══██║██╔══██╗██║  ██║
+ ██╔╝ ██╗██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝
+ ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ 
+EOF
+    echo -e "${NC}"
+    echo -e "${GREEN}XBoard 一键安装脚本 ${VERSION}${NC}"
+    echo -e "${BLUE}现代化的机场面板解决方案${NC}"
+    echo ""
+}
+
+# 显示菜单
+show_menu() {
+    echo "请选择安装选项:"
+    echo ""
+    echo "  1) 安装面板 (Panel)"
+    echo "  2) 安装节点 (Agent)"
+    echo "  3) 完整安装 (Panel + Agent)"
+    echo "  4) 卸载面板"
+    echo "  5) 卸载节点"
+    echo "  6) 更新面板"
+    echo "  7) 更新节点"
+    echo "  0) 退出"
+    echo ""
+    read -p "请输入选项 [0-7]: " choice
+    
+    case $choice in
+        1) install_panel ;;
+        2) install_agent_interactive ;;
+        3) install_all ;;
+        4) uninstall_panel ;;
+        5) uninstall_agent ;;
+        6) update_panel ;;
+        7) update_agent ;;
+        0) exit 0 ;;
+        *) log_error "无效选项"; show_menu ;;
+    esac
+}
+
+# 检查 root 权限
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        log_error "请使用 root 用户运行此脚本"
+        exit 1
+    fi
+}
+
+# 检测系统架构
+detect_arch() {
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64|amd64) ARCH="amd64"; SINGBOX_ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64"; SINGBOX_ARCH="arm64" ;;
+        armv7l) ARCH="armv7"; SINGBOX_ARCH="armv7" ;;
+        *) log_error "不支持的架构: $ARCH"; exit 1 ;;
+    esac
+    log_info "检测到架构: $ARCH"
+}
+
+# 检测操作系统
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+        OS_VERSION=$VERSION_ID
+    elif [ -f /etc/redhat-release ]; then
+        OS="centos"
+    else
+        log_error "无法检测操作系统"
+        exit 1
+    fi
+    log_info "检测到系统: $OS $OS_VERSION"
+    
+    case $OS in
+        debian|ubuntu)
+            PKG_UPDATE="apt-get update -qq"
+            PKG_INSTALL="apt-get install -y -qq"
+            ;;
+        centos|rhel|rocky|alma|fedora)
+            PKG_UPDATE="yum makecache -q"
+            PKG_INSTALL="yum install -y -q"
+            ;;
+        alpine)
+            PKG_UPDATE="apk update"
+            PKG_INSTALL="apk add --no-cache"
+            ;;
+        *)
+            log_warn "未知的包管理器"
+            ;;
+    esac
+}
+
+# 检查 GitHub CDN
+check_cdn() {
+    if wget --spider --quiet --timeout=3 "${GH_PROXY}https://raw.githubusercontent.com/SagerNet/sing-box/main/README.md" 2>/dev/null; then
+        log_info "使用 GitHub 代理: $GH_PROXY"
+    else
+        GH_PROXY=""
+        log_info "直连 GitHub"
+    fi
+}
+
+# 安装依赖
+install_deps() {
+    log_info "安装系统依赖..."
+    local deps_needed=""
+    command -v curl >/dev/null 2>&1 || deps_needed="$deps_needed curl"
+    command -v wget >/dev/null 2>&1 || deps_needed="$deps_needed wget"
+    command -v tar >/dev/null 2>&1 || deps_needed="$deps_needed tar"
+    command -v unzip >/dev/null 2>&1 || deps_needed="$deps_needed unzip"
+    command -v git >/dev/null 2>&1 || deps_needed="$deps_needed git"
+    
+    if [ -n "$deps_needed" ]; then
+        log_info "安装: $deps_needed"
+        $PKG_UPDATE >/dev/null 2>&1 || true
+        $PKG_INSTALL $deps_needed >/dev/null 2>&1 || log_warn "部分依赖安装失败"
+    fi
+}
+
+# 安装 Docker
+install_docker() {
+    if command -v docker &>/dev/null; then
+        log_info "Docker 已安装"
+        return 0
+    fi
+    
+    log_info "安装 Docker..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker
+    systemctl start docker
+    log_success "Docker 安装完成"
+}
+
+# 安装 Docker Compose
+install_docker_compose() {
+    if docker compose version &>/dev/null 2>&1; then
+        log_info "Docker Compose 已安装"
+        return 0
+    fi
+    
+    log_info "安装 Docker Compose..."
+    local COMPOSE_VERSION="2.24.0"
+    local COMPOSE_URL="https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
+    
+    if [ -n "$GH_PROXY" ]; then
+        COMPOSE_URL="${GH_PROXY}${COMPOSE_URL}"
+    fi
+    
+    curl -L "$COMPOSE_URL" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    log_success "Docker Compose 安装完成"
+}
+
+
+# ==================== 面板安装 ====================
+
+# 安装面板
+install_panel() {
+    log_info "开始安装 XBoard 面板..."
+    
+    install_docker
+    install_docker_compose
+    
+    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    # 下载源码
+    local REPO_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
+    
+    log_info "下载源码..."
+    if ! wget -q --show-progress -O xboard.zip "$REPO_URL"; then
+        log_error "下载失败"
+        exit 1
+    fi
+    unzip -q xboard.zip
+    cp -r xboard-go-main/* "$INSTALL_DIR/"
+    
+    cd "$INSTALL_DIR"
+    
+    # 创建配置文件
+    if [ ! -f "config.yaml" ]; then
+        create_panel_config
+    fi
+    
+    # 创建 Docker Compose 文件
+    create_docker_compose
+    
+    # 创建初始化 SQL
+    create_init_sql
+    
+    # 创建 Nginx 配置
+    create_nginx_config
+    
+    # 启动服务
+    log_info "启动面板服务..."
+    docker compose up -d --build
+    
+    log_success "面板安装完成！"
+    show_panel_info
+}
+
+# 创建面板配置
+create_panel_config() {
+    log_info "创建配置文件..."
+    
+    # 生成随机密码
+    local DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    local REDIS_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    local JWT_SECRET=$(openssl rand -base64 32)
+    
+    cat > config.yaml << EOF
+app:
+  name: "XBoard"
+  url: "http://localhost:8080"
+  debug: false
+  jwt_secret: "${JWT_SECRET}"
+  
+server:
+  host: "0.0.0.0"
+  port: 8080
+  
+database:
+  type: "mysql"
+  host: "mysql"
+  port: 3306
+  username: "xboard"
+  password: "${DB_PASS}"
+  database: "xboard"
+  
+redis:
+  host: "redis"
+  port: 6379
+  password: "${REDIS_PASS}"
+  database: 0
+  
+mail:
+  driver: "smtp"
+  host: "smtp.gmail.com"
+  port: 587
+  username: ""
+  password: ""
+  encryption: "tls"
+  from_address: ""
+  from_name: "XBoard"
+  
+telegram:
+  bot_token: ""
+  
+subscribe:
+  single_mode: false
+  
+payment:
+  alipay:
+    app_id: ""
+    private_key: ""
+    public_key: ""
+  stripe:
+    public_key: ""
+    secret_key: ""
+    webhook_secret: ""
+EOF
+    
+    # 保存密码到环境文件
+    cat > .env << EOF
+MYSQL_ROOT_PASSWORD=root_${DB_PASS}
+MYSQL_DATABASE=xboard
+MYSQL_USER=xboard
+MYSQL_PASSWORD=${DB_PASS}
+REDIS_PASSWORD=${REDIS_PASS}
+EOF
+    
+    log_info "配置文件已创建: config.yaml"
+    log_hint "数据库密码: ${DB_PASS}"
+    log_hint "Redis 密码: ${REDIS_PASS}"
+}
+
+# 创建 Docker Compose 文件
+create_docker_compose() {
+    cat > docker-compose.yaml << 'EOF'
+version: '3.8'
+
+services:
+  xboard:
+    build: .
+    container_name: xboard
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./storage:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - xboard-net
+
+  mysql:
+    image: mysql:8.0
+    container_name: xboard-mysql
+    env_file:
+      - .env
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xboard-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: xboard-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - xboard-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: xboard-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - xboard
+    restart: unless-stopped
+    networks:
+      - xboard-net
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  xboard-net:
+    driver: bridge
+EOF
+}
+
+# 创建初始化 SQL
+create_init_sql() {
+    cat > init.sql << 'EOF'
+-- XBoard 初始化 SQL
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- 创建管理员账户 (密码: admin123)
+INSERT INTO `users` (`email`, `password`, `is_admin`, `is_staff`, `balance`, `created_at`, `updated_at`) 
+VALUES ('admin@xboard.local', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 1, 1, 0, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())
+ON DUPLICATE KEY UPDATE `is_admin` = 1;
+
+SET FOREIGN_KEY_CHECKS = 1;
+EOF
+}
+
+# 创建 Nginx 配置
+create_nginx_config() {
+    cat > nginx.conf << 'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    
+    sendfile        on;
+    keepalive_timeout  65;
+    client_max_body_size 50m;
+    
+    # Gzip
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    upstream xboard {
+        server xboard:8080;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+        
+        location / {
+            proxy_pass http://xboard;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+    }
+    
+    # HTTPS 配置 (取消注释并配置证书后使用)
+    # server {
+    #     listen 443 ssl http2;
+    #     server_name your-domain.com;
+    #     
+    #     ssl_certificate /etc/nginx/ssl/cert.pem;
+    #     ssl_certificate_key /etc/nginx/ssl/key.pem;
+    #     ssl_protocols TLSv1.2 TLSv1.3;
+    #     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    #     
+    #     location / {
+    #         proxy_pass http://xboard;
+    #         proxy_http_version 1.1;
+    #         proxy_set_header Upgrade $http_upgrade;
+    #         proxy_set_header Connection "upgrade";
+    #         proxy_set_header Host $host;
+    #         proxy_set_header X-Real-IP $remote_addr;
+    #         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #         proxy_set_header X-Forwarded-Proto $scheme;
+    #     }
+    # }
+}
+EOF
+}
+
+# 显示面板信息
+show_panel_info() {
+    local IP=$(curl -s4 ip.sb 2>/dev/null || curl -s4 ifconfig.me 2>/dev/null || echo "YOUR_IP")
+    
+    echo ""
+    echo "=========================================="
+    echo -e "${GREEN}XBoard 面板安装完成！${NC}"
+    echo "=========================================="
+    echo ""
+    echo "访问地址: http://${IP}:80"
+    echo "后台地址: http://${IP}:80/admin"
+    echo ""
+    echo "默认管理员账户:"
+    echo "  邮箱: admin@xboard.local"
+    echo "  密码: admin123"
+    echo ""
+    echo "安装目录: $INSTALL_DIR"
+    echo ""
+    echo "常用命令:"
+    echo "  查看状态: cd $INSTALL_DIR && docker compose ps"
+    echo "  查看日志: cd $INSTALL_DIR && docker compose logs -f"
+    echo "  重启服务: cd $INSTALL_DIR && docker compose restart"
+    echo "  停止服务: cd $INSTALL_DIR && docker compose down"
+    echo ""
+    echo -e "${YELLOW}请及时修改默认密码！${NC}"
+    echo ""
+}
+
+
+# ==================== Agent 安装 ====================
+
+# 安装 sing-box
+install_singbox() {
+    log_info "安装 sing-box..."
+    
+    if command -v sing-box &>/dev/null; then
+        local current_version=$(sing-box version 2>/dev/null | head -1 | awk '{print $3}')
+        log_info "sing-box 已安装，版本: $current_version"
+        return 0
+    fi
+    
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    local SINGBOX_VERSION="$SINGBOX_DEFAULT_VERSION"
+    local SINGBOX_URL="${GH_PROXY}https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-${SINGBOX_ARCH}.tar.gz"
+    
+    log_info "下载 sing-box v${SINGBOX_VERSION}..."
+    
+    if ! wget -q --show-progress -O sing-box.tar.gz "$SINGBOX_URL"; then
+        log_error "下载 sing-box 失败"
+        exit 1
+    fi
+    
+    tar -xzf sing-box.tar.gz
+    mv sing-box-*/sing-box /usr/local/bin/
+    chmod +x /usr/local/bin/sing-box
+    
+    mkdir -p "$SINGBOX_DIR"
+    mkdir -p "$SINGBOX_DIR/conf"
+    
+    # 创建默认配置
+    if [ ! -f "$SINGBOX_DIR/config.json" ]; then
+        cat > "$SINGBOX_DIR/config.json" << 'EOF'
+{
+    "log": {
+        "level": "info",
+        "timestamp": true
+    },
+    "inbounds": [],
+    "outbounds": [
+        {
+            "type": "direct",
+            "tag": "direct"
+        }
+    ]
+}
+EOF
+    fi
+    
+    # 创建 systemd 服务
+    cat > /etc/systemd/system/sing-box.service << 'EOF'
+[Unit]
+Description=sing-box service
+Documentation=https://sing-box.sagernet.org
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl daemon-reload
+    log_info "sing-box v${SINGBOX_VERSION} 安装完成"
+}
+
+# 交互式安装 Agent
+install_agent_interactive() {
+    echo ""
+    read -p "请输入面板地址 (如 https://your-panel.com): " PANEL_URL
+    read -p "请输入节点 Token: " TOKEN
+    
+    if [ -z "$PANEL_URL" ] || [ -z "$TOKEN" ]; then
+        log_error "面板地址和 Token 不能为空"
+        exit 1
+    fi
+    
+    PANEL_URL="${PANEL_URL%/}"
+    install_agent "$PANEL_URL" "$TOKEN"
+}
+
+# 安装 Agent
+install_agent() {
+    local panel_url="${1:-$PANEL_URL}"
+    local token="${2:-$TOKEN}"
+    
+    log_info "开始安装 XBoard Agent..."
+    
+    install_singbox
+    
+    mkdir -p "$AGENT_DIR"
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    # 下载 Agent
+    local AGENT_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/releases/download/1.1/xboard-agent-linux-${ARCH}"
+    
+    log_info "下载 Agent..."
+    if ! wget -q --show-progress -O "$AGENT_DIR/xboard-agent" "$AGENT_URL"; then
+        log_warn "下载预编译版本失败，尝试从源码构建..."
+        build_agent_from_source
+    fi
+    
+    chmod +x "$AGENT_DIR/xboard-agent"
+    
+    # 创建服务
+    create_agent_service "$panel_url" "$token"
+    
+    log_success "Agent 安装完成！"
+    show_agent_info
+}
+
+# 从源码构建 Agent
+build_agent_from_source() {
+    if ! command -v go &>/dev/null; then
+        log_info "安装 Go..."
+        local GO_VERSION="1.21.5"
+        local GO_URL="https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz"
+        
+        cd "$TEMP_DIR"
+        wget -q -O go.tar.gz "$GO_URL"
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf go.tar.gz
+        export PATH=$PATH:/usr/local/go/bin
+        export GOPATH=/root/go
+    fi
+    
+    cd "$TEMP_DIR"
+    git clone --depth 1 "${GH_PROXY}https://github.com/${GITHUB_REPO}.git" xboard-go 2>/dev/null || \
+    git clone --depth 1 "https://github.com/${GITHUB_REPO}.git" xboard-go
+    
+    cd xboard-go/agent
+    go build -ldflags="-s -w" -o "$AGENT_DIR/xboard-agent" .
+    
+    log_info "从源码构建完成"
+}
+
+# 创建 Agent 服务
+create_agent_service() {
+    local panel_url="$1"
+    local token="$2"
+    
+    log_info "创建 Agent 服务..."
+    
+    cat > /etc/systemd/system/xboard-agent.service << EOF
+[Unit]
+Description=XBoard Agent
+Documentation=https://github.com/${GITHUB_REPO}
+After=network.target sing-box.service
+
+[Service]
+Type=simple
+ExecStart=${AGENT_DIR}/xboard-agent -panel ${panel_url} -token ${token}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl daemon-reload
+    systemctl enable xboard-agent
+    systemctl start xboard-agent
+    
+    log_info "Agent 服务已启动"
+}
+
+# 显示 Agent 信息
+show_agent_info() {
+    echo ""
+    echo "=========================================="
+    echo -e "${GREEN}XBoard Agent 安装完成！${NC}"
+    echo "=========================================="
+    echo ""
+    echo "安装目录: $AGENT_DIR"
+    echo "sing-box 目录: $SINGBOX_DIR"
+    echo ""
+    echo "常用命令:"
+    echo "  查看 Agent 状态: systemctl status xboard-agent"
+    echo "  查看 Agent 日志: journalctl -u xboard-agent -f"
+    echo "  重启 Agent: systemctl restart xboard-agent"
+    echo "  查看 sing-box 状态: systemctl status sing-box"
+    echo "  查看 sing-box 日志: journalctl -u sing-box -f"
+    echo ""
+    
+    systemctl status xboard-agent --no-pager 2>/dev/null || true
+}
+
+
+# ==================== 完整安装 ====================
+
+# 完整安装 (面板 + Agent)
+install_all() {
+    log_info "开始完整安装..."
+    
+    install_panel
+    
+    echo ""
+    read -p "是否在本机同时安装 Agent? [y/N]: " install_local_agent
+    
+    if [ "$install_local_agent" = "y" ] || [ "$install_local_agent" = "Y" ]; then
+        local IP=$(curl -s4 ip.sb 2>/dev/null || curl -s4 ifconfig.me 2>/dev/null || echo "localhost")
+        
+        echo ""
+        log_hint "请先在面板后台添加节点并获取 Token"
+        read -p "请输入节点 Token: " TOKEN
+        
+        if [ -n "$TOKEN" ]; then
+            install_agent "http://${IP}:8080" "$TOKEN"
+        else
+            log_warn "未输入 Token，跳过 Agent 安装"
+            log_hint "稍后可以运行: bash install.sh agent"
+        fi
+    fi
+    
+    log_success "安装完成！"
+}
+
+# ==================== 卸载功能 ====================
+
+# 卸载面板
+uninstall_panel() {
+    log_info "卸载 XBoard 面板..."
+    
+    if [ -d "$INSTALL_DIR" ]; then
+        cd "$INSTALL_DIR"
+        docker compose down -v 2>/dev/null || true
+        cd /
+        
+        read -p "是否删除数据目录? [y/N]: " delete_data
+        if [ "$delete_data" = "y" ] || [ "$delete_data" = "Y" ]; then
+            rm -rf "$INSTALL_DIR"
+            log_info "数据目录已删除"
+        else
+            log_info "保留数据目录: $INSTALL_DIR"
+        fi
+    fi
+    
+    log_success "面板已卸载"
+}
+
+# 卸载 Agent
+uninstall_agent() {
+    log_info "卸载 XBoard Agent..."
+    
+    systemctl stop xboard-agent 2>/dev/null || true
+    systemctl disable xboard-agent 2>/dev/null || true
+    rm -f /etc/systemd/system/xboard-agent.service
+    systemctl daemon-reload
+    
+    rm -rf "$AGENT_DIR"
+    
+    log_info "Agent 已卸载"
+    
+    read -p "是否同时卸载 sing-box? [y/N]: " uninstall_sb
+    if [ "$uninstall_sb" = "y" ] || [ "$uninstall_sb" = "Y" ]; then
+        systemctl stop sing-box 2>/dev/null || true
+        systemctl disable sing-box 2>/dev/null || true
+        rm -f /etc/systemd/system/sing-box.service
+        systemctl daemon-reload
+        rm -f /usr/local/bin/sing-box
+        rm -rf "$SINGBOX_DIR"
+        log_info "sing-box 已卸载"
+    fi
+    
+    log_success "Agent 已卸载"
+}
+
+# ==================== 更新功能 ====================
+
+# 更新面板
+update_panel() {
+    log_info "更新 XBoard 面板..."
+    
+    if [ ! -d "$INSTALL_DIR" ]; then
+        log_error "面板未安装"
+        exit 1
+    fi
+    
+    cd "$INSTALL_DIR"
+    
+    # 备份配置
+    cp config.yaml config.yaml.bak
+    cp .env .env.bak 2>/dev/null || true
+    
+    # 停止服务
+    docker compose down
+    
+    # 下载新版本
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    local REPO_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
+    wget -q --show-progress -O xboard.zip "$REPO_URL"
+    unzip -q xboard.zip
+    
+    # 更新文件 (保留配置)
+    rsync -av --exclude='config.yaml' --exclude='.env' --exclude='storage' --exclude='ssl' \
+        xboard-go-main/* "$INSTALL_DIR/"
+    
+    cd "$INSTALL_DIR"
+    
+    # 恢复配置
+    mv config.yaml.bak config.yaml
+    mv .env.bak .env 2>/dev/null || true
+    
+    # 重新构建并启动
+    docker compose up -d --build
+    
+    log_success "面板更新完成！"
+}
+
+# 更新 Agent
+update_agent() {
+    log_info "更新 XBoard Agent..."
+    
+    if [ ! -f "$AGENT_DIR/xboard-agent" ]; then
+        log_error "Agent 未安装"
+        exit 1
+    fi
+    
+    # 停止服务
+    systemctl stop xboard-agent
+    
+    # 下载新版本
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    local AGENT_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/releases/download/1.1/xboard-agent-linux-${ARCH}"
+    
+    if wget -q --show-progress -O "$AGENT_DIR/xboard-agent.new" "$AGENT_URL"; then
+        mv "$AGENT_DIR/xboard-agent.new" "$AGENT_DIR/xboard-agent"
+        chmod +x "$AGENT_DIR/xboard-agent"
+    else
+        log_warn "下载失败，尝试从源码构建..."
+        build_agent_from_source
+    fi
+    
+    # 重启服务
+    systemctl start xboard-agent
+    
+    log_success "Agent 更新完成！"
+}
+
+# ==================== 主函数 ====================
+
+main() {
+    show_banner
+    check_root
+    detect_arch
+    detect_os
+    check_cdn
+    install_deps
+    
+    # 处理命令行参数
+    case "${1:-}" in
+        panel)
+            install_panel
+            ;;
+        agent)
+            if [ -n "$2" ] && [ -n "$3" ]; then
+                install_agent "$2" "$3"
+            else
+                install_agent_interactive
+            fi
+            ;;
+        all)
+            install_all
+            ;;
+        uninstall-panel)
+            uninstall_panel
+            ;;
+        uninstall-agent)
+            uninstall_agent
+            ;;
+        update-panel)
+            update_panel
+            ;;
+        update-agent)
+            update_agent
+            ;;
+        -h|--help)
+            echo "用法: $0 [命令]"
+            echo ""
+            echo "命令:"
+            echo "  panel              安装面板"
+            echo "  agent [url] [token] 安装节点"
+            echo "  all                完整安装"
+            echo "  uninstall-panel    卸载面板"
+            echo "  uninstall-agent    卸载节点"
+            echo "  update-panel       更新面板"
+            echo "  update-agent       更新节点"
+            echo ""
+            echo "示例:"
+            echo "  $0 panel"
+            echo "  $0 agent https://panel.example.com abc123"
+            echo "  $0 all"
+            ;;
+        *)
+            show_menu
+            ;;
+    esac
+}
+
+main "$@"

@@ -223,3 +223,9 @@ func (s *MailService) RenderTemplate(tpl *MailTemplate, data interface{}) (strin
 
 	return subjectBuf.String(), bodyBuf.String(), nil
 }
+
+
+// IsConfigured 检查邮件是否已配置
+func (s *MailService) IsConfigured() bool {
+	return s.config.Host != "" && s.config.Username != ""
+}

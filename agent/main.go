@@ -43,23 +43,71 @@ type NodeConfig struct {
 }
 
 type Agent struct {
-	panelURL    string
-	token       string
-	configPath  string
-	singboxBin  string
-	singboxCmd  *exec.Cmd
-	lastConfig  string
-	httpClient  *http.Client
+	panelURL      string
+	token         string
+	configPath    string
+	singboxBin    string
+	singboxCmd    *exec.Cmd
+	lastConfig    string
+	httpClient    *http.Client
+	userVersions  map[int64]int64  // 节点用户版本缓存
+	userHashes    map[int64]string // 节点用户哈希缓存
 }
 
 func NewAgent() *Agent {
 	return &Agent{
-		panelURL:   panelURL,
-		token:      token,
-		configPath: configPath,
-		singboxBin: singboxBin,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		panelURL:     panelURL,
+		token:        token,
+		configPath:   configPath,
+		singboxBin:   singboxBin,
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		userVersions: make(map[int64]int64),
+		userHashes:   make(map[int64]string),
 	}
+}
+
+// getNodeUsers 获取节点用户（支持增量同步）
+func (a *Agent) getNodeUsers(nodeID int64) ([]map[string]interface{}, bool, error) {
+	version := a.userVersions[nodeID]
+	hash := a.userHashes[nodeID]
+
+	url := fmt.Sprintf("/users?node_id=%d&version=%d&hash=%s", nodeID, version, hash)
+	result, err := a.apiRequest("GET", url, nil)
+	if err != nil {
+		return nil, false, err
+	}
+
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("invalid response")
+	}
+
+	hasChange, _ := data["has_change"].(bool)
+	if !hasChange {
+		return nil, false, nil
+	}
+
+	// 更新版本和哈希
+	if v, ok := data["version"].(float64); ok {
+		a.userVersions[nodeID] = int64(v)
+	}
+	if h, ok := data["hash"].(string); ok {
+		a.userHashes[nodeID] = h
+	}
+
+	users, ok := data["users"].([]interface{})
+	if !ok {
+		return nil, true, nil
+	}
+
+	result_users := make([]map[string]interface{}, 0, len(users))
+	for _, u := range users {
+		if user, ok := u.(map[string]interface{}); ok {
+			result_users = append(result_users, user)
+		}
+	}
+
+	return result_users, true, nil
 }
 
 func (a *Agent) apiRequest(method, path string, body interface{}) (map[string]interface{}, error) {
@@ -137,14 +185,29 @@ func (a *Agent) getConfig() (*AgentConfig, error) {
 func (a *Agent) updateConfig(config *AgentConfig) (bool, error) {
 	// 注入用户到 inbounds
 	singboxConfig := config.SingBoxConfig
+	hasUserChange := false
+
 	if inbounds, ok := singboxConfig["inbounds"].([]interface{}); ok {
 		for i, inbound := range inbounds {
 			if ib, ok := inbound.(map[string]interface{}); ok {
-				tag := ib["tag"].(string)
+				tag, _ := ib["tag"].(string)
 				// 找到对应的节点配置
 				for _, node := range config.Nodes {
-					if node.Tag == tag && len(node.Users) > 0 {
-						ib["users"] = node.Users
+					if node.Tag == tag {
+						// 尝试增量获取用户
+						users, changed, err := a.getNodeUsers(node.ID)
+						if err != nil {
+							fmt.Printf("⚠ 获取节点 %d 用户失败: %v\n", node.ID, err)
+							// 使用配置中的用户
+							if len(node.Users) > 0 {
+								ib["users"] = node.Users
+							}
+						} else if changed && len(users) > 0 {
+							ib["users"] = users
+							hasUserChange = true
+						} else if len(node.Users) > 0 {
+							ib["users"] = node.Users
+						}
 						inbounds[i] = ib
 						break
 					}
@@ -157,7 +220,7 @@ func (a *Agent) updateConfig(config *AgentConfig) (bool, error) {
 	configJSON, _ := json.MarshalIndent(singboxConfig, "", "  ")
 	configStr := string(configJSON)
 
-	if configStr == a.lastConfig {
+	if configStr == a.lastConfig && !hasUserChange {
 		return false, nil
 	}
 

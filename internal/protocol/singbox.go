@@ -105,17 +105,37 @@ func GenerateSingBoxConfig(servers []service.ServerInfo, user *model.User) map[s
 		}
 	}
 
-	// 更新 selector 和 urltest 的 outbounds
+	// 更新各个分组的 outbounds
 	for i, ob := range outbounds {
 		if m, ok := ob.(map[string]interface{}); ok {
-			if m["type"] == "selector" || m["type"] == "urltest" {
+			tag, _ := m["tag"].(string)
+			outType, _ := m["type"].(string)
+			
+			switch tag {
+			case "🚀 节点选择":
+				// 节点选择：添加所有节点
 				if existing, ok := m["outbounds"].([]string); ok {
 					m["outbounds"] = append(existing, proxyTags...)
-				} else {
-					m["outbounds"] = proxyTags
 				}
-				outbounds[i] = m
+			case "♻️ 自动选择", "🔯 故障转移":
+				// 自动选择/故障转移：只包含节点
+				m["outbounds"] = proxyTags
+			case "📲 电报消息", "🤖 OpenAI", "📹 YouTube", "🎬 Netflix", "🍎 苹果服务", "🐟 漏网之鱼":
+				// 其他分组：添加所有节点
+				if existing, ok := m["outbounds"].([]string); ok {
+					m["outbounds"] = append(existing, proxyTags...)
+				}
+			default:
+				// 其他 selector/urltest 类型
+				if outType == "selector" || outType == "urltest" {
+					if existing, ok := m["outbounds"].([]string); ok {
+						m["outbounds"] = append(existing, proxyTags...)
+					} else {
+						m["outbounds"] = proxyTags
+					}
+				}
 			}
+			outbounds[i] = m
 		}
 	}
 
@@ -629,21 +649,67 @@ func getDefaultSingBoxConfig() map[string]interface{} {
 		},
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
-				{"tag": "google", "address": "tls://8.8.8.8"},
+				{"tag": "google", "address": "https://dns.google/dns-query", "detour": "🚀 节点选择"},
+				{"tag": "cloudflare", "address": "https://cloudflare-dns.com/dns-query", "detour": "🚀 节点选择"},
+				{"tag": "alidns", "address": "https://dns.alidns.com/dns-query", "detour": "direct"},
 				{"tag": "local", "address": "223.5.5.5", "detour": "direct"},
 			},
+			"rules": []map[string]interface{}{
+				{"domain_suffix": []string{".cn"}, "server": "local"},
+				{"geosite": "cn", "server": "local"},
+			},
+			"final": "google",
 		},
 		"outbounds": []interface{}{
 			map[string]interface{}{
 				"type":      "selector",
-				"tag":       "proxy",
-				"outbounds": []string{"auto"},
+				"tag":       "🚀 节点选择",
+				"outbounds": []string{"♻️ 自动选择", "🔯 故障转移", "direct"},
 			},
 			map[string]interface{}{
 				"type":      "urltest",
-				"tag":       "auto",
+				"tag":       "♻️ 自动选择",
 				"outbounds": []string{},
+				"url":       "https://www.gstatic.com/generate_204",
 				"interval":  "5m",
+				"tolerance": 50,
+			},
+			map[string]interface{}{
+				"type":      "urltest",
+				"tag":       "🔯 故障转移",
+				"outbounds": []string{},
+				"url":       "https://www.gstatic.com/generate_204",
+				"interval":  "5m",
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "📲 电报消息",
+				"outbounds": []string{"🚀 节点选择", "♻️ 自动选择", "direct"},
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "🤖 OpenAI",
+				"outbounds": []string{"🚀 节点选择", "♻️ 自动选择"},
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "📹 YouTube",
+				"outbounds": []string{"🚀 节点选择", "♻️ 自动选择", "direct"},
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "🎬 Netflix",
+				"outbounds": []string{"🚀 节点选择", "♻️ 自动选择", "direct"},
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "🍎 苹果服务",
+				"outbounds": []string{"direct", "🚀 节点选择"},
+			},
+			map[string]interface{}{
+				"type":      "selector",
+				"tag":       "🐟 漏网之鱼",
+				"outbounds": []string{"🚀 节点选择", "♻️ 自动选择", "direct"},
 			},
 			map[string]interface{}{"type": "direct", "tag": "direct"},
 			map[string]interface{}{"type": "block", "tag": "block"},
@@ -653,8 +719,29 @@ func getDefaultSingBoxConfig() map[string]interface{} {
 			"rules": []map[string]interface{}{
 				{"protocol": []string{"dns"}, "outbound": "dns-out"},
 				{"ip_is_private": true, "outbound": "direct"},
+				// OpenAI
+				{"domain_suffix": []string{"openai.com", "ai.com", "anthropic.com", "claude.ai"}, "outbound": "🤖 OpenAI"},
+				{"domain_keyword": []string{"openai"}, "outbound": "🤖 OpenAI"},
+				// Telegram
+				{"domain_suffix": []string{"telegram.org", "t.me", "tg.dev"}, "outbound": "📲 电报消息"},
+				{"ip_cidr": []string{"91.108.0.0/16", "109.239.140.0/24", "149.154.160.0/20"}, "outbound": "📲 电报消息"},
+				// YouTube
+				{"domain_suffix": []string{"youtube.com", "googlevideo.com", "ytimg.com", "yt.be"}, "outbound": "📹 YouTube"},
+				// Netflix
+				{"domain_suffix": []string{"netflix.com", "netflix.net", "nflximg.com", "nflximg.net", "nflxvideo.net"}, "outbound": "🎬 Netflix"},
+				// Apple
+				{"domain_suffix": []string{"apple.com", "icloud.com", "icloud-content.com", "mzstatic.com"}, "outbound": "🍎 苹果服务"},
+				// Google
+				{"domain_suffix": []string{"google.com", "googleapis.com", "gstatic.com", "gmail.com"}, "outbound": "🚀 节点选择"},
+				// GitHub
+				{"domain_suffix": []string{"github.com", "githubusercontent.com", "githubassets.com"}, "outbound": "🚀 节点选择"},
+				// Twitter
+				{"domain_suffix": []string{"twitter.com", "x.com", "twimg.com"}, "outbound": "🚀 节点选择"},
+				// 国内直连
+				{"geosite": "cn", "outbound": "direct"},
+				{"geoip": "cn", "outbound": "direct"},
 			},
-			"final":                 "proxy",
+			"final":                 "🐟 漏网之鱼",
 			"auto_detect_interface": true,
 		},
 	}

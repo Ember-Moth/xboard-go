@@ -124,6 +124,11 @@ const router = createRouter({
           name: 'AdminHosts',
           component: () => import('@/views/admin/Hosts.vue')
         },
+        {
+          path: 'traffic',
+          name: 'AdminTraffic',
+          component: () => import('@/views/admin/Traffic.vue')
+        },
       ]
     }
   ]

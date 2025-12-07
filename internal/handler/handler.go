@@ -101,6 +101,13 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 		v1.GET("/notices", GetNotices(services))
 		v1.GET("/knowledge", GetKnowledge(services))
 		v1.GET("/knowledge/categories", GetKnowledgeCategories(services))
+		v1.GET("/guest/settings", GetPublicSettings(services))
+
+		// Email verification
+		v1.POST("/guest/send_email_code", GuestSendEmailCode(services))
+
+		// Telegram webhook
+		v1.POST("/telegram/webhook", TelegramWebhook(services))
 
 		// Agent routes (主机对接)
 		agent := v1.Group("/agent")
@@ -109,6 +116,8 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			agent.POST("/heartbeat", AgentHeartbeat(services))
 			agent.GET("/config", AgentGetConfig(services))
 			agent.POST("/traffic", AgentReportTraffic(services))
+			agent.GET("/users", AgentGetUsers(services))
+			agent.POST("/sync", AgentSyncStatus(services))
 		}
 
 		// Server routes (节点通信)
@@ -216,6 +225,21 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			admin.PUT("/node/:id", AdminUpdateNode(services))
 			admin.DELETE("/node/:id", AdminDeleteNode(services))
 			admin.GET("/node/default", AdminGetDefaultNodeConfig(services))
+
+			// Site settings (站点设置)
+			admin.GET("/site/settings", AdminGetSiteSettings(services))
+			admin.POST("/site/settings", AdminUpdateSiteSettings(services))
+
+			// Telegram settings
+			admin.GET("/telegram/settings", AdminGetTelegramSettings(services))
+			admin.POST("/telegram/settings", AdminUpdateTelegramSettings(services))
+			admin.POST("/telegram/webhook", AdminSetTelegramWebhook(services))
+
+			// Traffic statistics (流量统计)
+			admin.GET("/traffic/overview", AdminTrafficOverview(services))
+			admin.GET("/traffic/servers", AdminServerTrafficOverview(services))
+			admin.GET("/traffic/daily", AdminDailyTrafficStats(services))
+			admin.GET("/traffic/user/:id", AdminUserTrafficDetail(services))
 		}
 	}
 }

@@ -22,6 +22,71 @@ func NewUserService(userRepo *repository.UserRepository, cache *cache.Client) *U
 	}
 }
 
+// GetUsersCached 获取用户列表（带缓存）
+func (s *UserService) GetUsersCached(page, pageSize int) ([]model.User, int64, error) {
+	cacheKey := cache.UserListPageKey(page, pageSize)
+
+	// 尝试从缓存获取
+	var cachedResult struct {
+		Users []model.User `json:"users"`
+		Total int64        `json:"total"`
+	}
+	if err := s.cache.GetJSON(cacheKey, &cachedResult); err == nil {
+		return cachedResult.Users, cachedResult.Total, nil
+	}
+
+	// 从数据库获取
+	users, total, err := s.userRepo.GetUsersPaginated(page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 写入缓存（5分钟）
+	cachedResult.Users = users
+	cachedResult.Total = total
+	s.cache.SetJSON(cacheKey, cachedResult, 5*time.Minute)
+
+	return users, total, nil
+}
+
+// InvalidateUserCache 使用户缓存失效
+func (s *UserService) InvalidateUserCache(userID int64) {
+	// 删除用户信息缓存
+	s.cache.Del(cache.UserInfoKey(userID))
+	// 删除用户列表缓存
+	s.cache.DelPattern("USER_LIST_PAGE_*")
+	// 记录用户变更
+	s.cache.RecordUserChange(userID, "update")
+	// 增加版本号
+	s.cache.IncrUserListVersion()
+}
+
+// InvalidateUserListCache 使用户列表缓存失效
+func (s *UserService) InvalidateUserListCache() {
+	s.cache.DelPattern("USER_LIST_PAGE_*")
+	s.cache.Del(cache.KeyUserListTotal)
+}
+
+// GetUserByIDCached 获取用户（带缓存）
+func (s *UserService) GetUserByIDCached(userID int64) (*model.User, error) {
+	cacheKey := cache.UserInfoKey(userID)
+
+	var user model.User
+	if err := s.cache.GetJSON(cacheKey, &user); err == nil {
+		return &user, nil
+	}
+
+	// 从数据库获取
+	dbUser, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存（10分钟）
+	s.cache.SetJSON(cacheKey, dbUser, 10*time.Minute)
+	return dbUser, nil
+}
+
 // Register 用户注册
 func (s *UserService) Register(email, password string, inviteUserID *int64) (*model.User, error) {
 	// 检查邮箱是否已存在
@@ -182,4 +247,216 @@ func (s *UserService) GetUserInfo(user *model.User) map[string]interface{} {
 		"is_staff":        user.IsStaff,
 		"created_at":      user.CreatedAt,
 	}
+}
+
+
+// GetNodeUsersWithCache 获取节点用户（带缓存和增量同步支持）
+func (s *UserService) GetNodeUsersWithCache(nodeID int64, groupIDs []int64, lastVersion int64) (*NodeUsersResult, error) {
+	cacheKey := cache.NodeUserListKey(nodeID)
+	hashKey := cache.NodeUserHashKey(nodeID)
+	versionKey := cache.NodeUserVersionKey(nodeID)
+
+	// 获取当前版本
+	currentVersion, _ := s.cache.GetNodeUserVersion(nodeID)
+
+	// 如果客户端版本与当前版本相同，返回空（无变化）
+	if lastVersion > 0 && lastVersion == currentVersion {
+		return &NodeUsersResult{
+			Version:  currentVersion,
+			HasChange: false,
+		}, nil
+	}
+
+	// 尝试从缓存获取
+	var users []NodeUserInfo
+	if err := s.cache.GetJSON(cacheKey, &users); err == nil {
+		// 检查哈希是否变化
+		cachedHash, _ := s.cache.Get(hashKey)
+		currentHash := cache.ComputeHash(users)
+		if cachedHash == currentHash {
+			return &NodeUsersResult{
+				Version:   currentVersion,
+				Users:     users,
+				Hash:      currentHash,
+				HasChange: lastVersion != currentVersion,
+			}, nil
+		}
+	}
+
+	// 从数据库获取
+	dbUsers, err := s.userRepo.GetAvailableUsers(groupIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	users = make([]NodeUserInfo, 0, len(dbUsers))
+	for _, u := range dbUsers {
+		users = append(users, NodeUserInfo{
+			ID:          u.ID,
+			UUID:        u.UUID,
+			SpeedLimit:  u.SpeedLimit,
+			DeviceLimit: u.DeviceLimit,
+		})
+	}
+
+	// 计算哈希
+	newHash := cache.ComputeHash(users)
+
+	// 更新缓存
+	s.cache.SetJSON(cacheKey, users, 5*time.Minute)
+	s.cache.Set(hashKey, newHash, 5*time.Minute)
+
+	// 如果哈希变化，增加版本号
+	oldHash, _ := s.cache.Get(hashKey)
+	if oldHash != newHash {
+		currentVersion, _ = s.cache.IncrNodeUserVersion(nodeID)
+	}
+
+	return &NodeUsersResult{
+		Version:   currentVersion,
+		Users:     users,
+		Hash:      newHash,
+		HasChange: true,
+	}, nil
+}
+
+// NodeUserInfo 节点用户信息
+type NodeUserInfo struct {
+	ID          int64  `json:"id"`
+	UUID        string `json:"uuid"`
+	SpeedLimit  *int   `json:"speed_limit,omitempty"`
+	DeviceLimit *int   `json:"device_limit,omitempty"`
+}
+
+// NodeUsersResult 节点用户结果
+type NodeUsersResult struct {
+	Version   int64          `json:"version"`
+	Users     []NodeUserInfo `json:"users,omitempty"`
+	Hash      string         `json:"hash"`
+	HasChange bool           `json:"has_change"`
+}
+
+// GetChangedUsers 获取变更的用户（增量同步）
+func (s *UserService) GetChangedUsers(sinceVersion int64) ([]int64, int64, error) {
+	currentVersion, _ := s.cache.GetUserListVersion()
+	if sinceVersion >= currentVersion {
+		return nil, currentVersion, nil
+	}
+
+	// 获取变更记录
+	changes, err := s.cache.GetUserChanges(1000)
+	if err != nil {
+		return nil, currentVersion, err
+	}
+
+	userIDs := make([]int64, 0)
+	seen := make(map[int64]bool)
+	for _, change := range changes {
+		if uid, ok := change["user_id"].(float64); ok {
+			id := int64(uid)
+			if !seen[id] {
+				userIDs = append(userIDs, id)
+				seen[id] = true
+			}
+		}
+	}
+
+	return userIDs, currentVersion, nil
+}
+
+
+// GetByEmail 根据邮箱获取用户
+func (s *UserService) GetByEmail(email string) (*model.User, error) {
+	return s.userRepo.FindByEmail(email)
+}
+
+// RegisterWithIP 带 IP 记录的用户注册
+func (s *UserService) RegisterWithIP(email, password string, inviteUserID *int64, ip string) (*model.User, error) {
+	// 检查邮箱是否已存在
+	existing, _ := s.userRepo.FindByEmail(email)
+	if existing != nil {
+		return nil, errors.New("email already exists")
+	}
+
+	// 加密密码
+	hashedPassword, err := utils.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	user := &model.User{
+		Email:        email,
+		Password:     hashedPassword,
+		UUID:         utils.GenerateUUID(),
+		Token:        utils.GenerateToken(32),
+		InviteUserID: inviteUserID,
+		RegisterIP:   &ip,
+		CreatedAt:    time.Now().Unix(),
+		UpdatedAt:    time.Now().Unix(),
+	}
+
+	if err := s.userRepo.Create(user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+// CountByRegisterIP 统计 IP 注册数量
+func (s *UserService) CountByRegisterIP(ip string) (int64, error) {
+	return s.userRepo.CountByRegisterIP(ip)
+}
+
+// SendEmailCode 发送邮箱验证码
+func (s *UserService) SendEmailCode(email string) error {
+	// 生成 6 位验证码
+	code := utils.GenerateNumericCode(6)
+
+	// 存储到缓存（10分钟有效）
+	cacheKey := "email_code:" + email
+	if err := s.cache.Set(cacheKey, code, 10*time.Minute); err != nil {
+		return err
+	}
+
+	// 这里需要调用邮件服务发送验证码
+	// 由于 UserService 没有直接引用 MailService，需要通过其他方式
+	// 实际实现中可以通过事件或者在 handler 层处理
+	return nil
+}
+
+// VerifyEmailCode 验证邮箱验证码
+func (s *UserService) VerifyEmailCode(email, code string) bool {
+	cacheKey := "email_code:" + email
+	storedCode, err := s.cache.Get(cacheKey)
+	if err != nil {
+		return false
+	}
+	if storedCode == code {
+		// 验证成功后删除验证码
+		s.cache.Del(cacheKey)
+		return true
+	}
+	return false
+}
+
+// SetEmailCode 设置邮箱验证码（供外部调用）
+func (s *UserService) SetEmailCode(email, code string) error {
+	cacheKey := "email_code:" + email
+	return s.cache.Set(cacheKey, code, 10*time.Minute)
+}
+
+// GetEmailCodeCooldown 获取验证码冷却时间
+func (s *UserService) GetEmailCodeCooldown(email string) int64 {
+	cacheKey := "email_code_cooldown:" + email
+	ttl, err := s.cache.TTL(cacheKey)
+	if err != nil || ttl < 0 {
+		return 0
+	}
+	return int64(ttl.Seconds())
+}
+
+// SetEmailCodeCooldown 设置验证码冷却
+func (s *UserService) SetEmailCodeCooldown(email string) error {
+	cacheKey := "email_code_cooldown:" + email
+	return s.cache.Set(cacheKey, "1", 60*time.Second)
 }

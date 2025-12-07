@@ -53,6 +53,19 @@ export const useUserStore = defineStore('user', () => {
     return res.data
   }
 
+  async function registerWithCode(email: string, password: string, inviteCode?: string, emailCode?: string) {
+    const res = await api.post('/api/v1/guest/register', { 
+      email, 
+      password,
+      invite_code: inviteCode,
+      email_code: emailCode
+    })
+    token.value = res.data.data.token
+    localStorage.setItem('token', token.value!)
+    await fetchUser()
+    return res.data
+  }
+
   async function fetchUser() {
     if (!token.value) return
     try {
@@ -67,6 +80,8 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
     token.value = null
     localStorage.removeItem('token')
+    // 跳转到登录页
+    window.location.href = '/login'
   }
 
   // 初始化时获取用户信息
@@ -86,6 +101,7 @@ export const useUserStore = defineStore('user', () => {
     trafficPercent,
     login,
     register,
+    registerWithCode,
     fetchUser,
     logout,
     init,

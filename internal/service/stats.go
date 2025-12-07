@@ -323,3 +323,158 @@ func (s *StatsService) UpdateOrderStatus(id int64, status int) error {
 	order.Status = status
 	return s.orderRepo.Update(order)
 }
+
+
+// GetTrafficOverview 获取流量概览（用于饼状图）
+func (s *StatsService) GetTrafficOverview() (map[string]interface{}, error) {
+	// 获取所有用户的流量统计
+	users, _, err := s.userRepo.FindAll("", 1, 10000)
+	if err != nil {
+		return nil, err
+	}
+
+	var totalUpload, totalDownload int64
+	var activeUsers int
+	userTraffic := make([]map[string]interface{}, 0)
+
+	for _, user := range users {
+		used := user.U + user.D
+		if used > 0 {
+			activeUsers++
+			totalUpload += user.U
+			totalDownload += user.D
+			userTraffic = append(userTraffic, map[string]interface{}{
+				"user_id":  user.ID,
+				"email":    user.Email,
+				"upload":   user.U,
+				"download": user.D,
+				"total":    used,
+			})
+		}
+	}
+
+	// 按流量排序取前 10
+	// 简单冒泡排序
+	for i := 0; i < len(userTraffic)-1 && i < 10; i++ {
+		for j := i + 1; j < len(userTraffic); j++ {
+			if userTraffic[j]["total"].(int64) > userTraffic[i]["total"].(int64) {
+				userTraffic[i], userTraffic[j] = userTraffic[j], userTraffic[i]
+			}
+		}
+	}
+
+	topUsers := userTraffic
+	if len(topUsers) > 10 {
+		topUsers = topUsers[:10]
+	}
+
+	return map[string]interface{}{
+		"total_upload":   totalUpload,
+		"total_download": totalDownload,
+		"total_traffic":  totalUpload + totalDownload,
+		"active_users":   activeUsers,
+		"top_users":      topUsers,
+		"upload_percent": func() float64 {
+			total := totalUpload + totalDownload
+			if total == 0 {
+				return 0
+			}
+			return float64(totalUpload) / float64(total) * 100
+		}(),
+		"download_percent": func() float64 {
+			total := totalUpload + totalDownload
+			if total == 0 {
+				return 0
+			}
+			return float64(totalDownload) / float64(total) * 100
+		}(),
+	}, nil
+}
+
+// GetServerTrafficOverview 获取节点流量概览
+func (s *StatsService) GetServerTrafficOverview() ([]map[string]interface{}, error) {
+	servers, err := s.serverRepo.GetAllServers()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]interface{}, 0, len(servers))
+	for _, server := range servers {
+		// 从统计表获取节点流量
+		traffic, _ := s.statRepo.GetServerTotalTraffic(server.ID)
+		result = append(result, map[string]interface{}{
+			"server_id":   server.ID,
+			"server_name": server.Name,
+			"server_type": server.Type,
+			"upload":      traffic.U,
+			"download":    traffic.D,
+			"total":       traffic.U + traffic.D,
+		})
+	}
+
+	return result, nil
+}
+
+// GetUserTrafficDetail 获取用户流量详情
+func (s *StatsService) GetUserTrafficDetail(userID int64) (map[string]interface{}, error) {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	used := user.U + user.D
+	remaining := user.TransferEnable - used
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	usedPercent := float64(0)
+	if user.TransferEnable > 0 {
+		usedPercent = float64(used) / float64(user.TransferEnable) * 100
+	}
+
+	return map[string]interface{}{
+		"user_id":         user.ID,
+		"email":           user.Email,
+		"upload":          user.U,
+		"download":        user.D,
+		"total_used":      used,
+		"transfer_enable": user.TransferEnable,
+		"remaining":       remaining,
+		"used_percent":    usedPercent,
+	}, nil
+}
+
+// GetDailyTrafficStats 获取每日流量统计
+func (s *StatsService) GetDailyTrafficStats(days int) ([]map[string]interface{}, error) {
+	endAt := time.Now().Unix()
+	startAt := endAt - int64(days*86400)
+
+	stats, err := s.statRepo.GetServerTrafficStats(startAt, endAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 按日期聚合
+	dailyMap := make(map[string]map[string]int64)
+	for _, stat := range stats {
+		date := time.Unix(stat.RecordAt, 0).Format("2006-01-02")
+		if _, ok := dailyMap[date]; !ok {
+			dailyMap[date] = map[string]int64{"upload": 0, "download": 0}
+		}
+		dailyMap[date]["upload"] += stat.U
+		dailyMap[date]["download"] += stat.D
+	}
+
+	result := make([]map[string]interface{}, 0)
+	for date, traffic := range dailyMap {
+		result = append(result, map[string]interface{}{
+			"date":     date,
+			"upload":   traffic["upload"],
+			"download": traffic["download"],
+			"total":    traffic["upload"] + traffic["download"],
+		})
+	}
+
+	return result, nil
+}

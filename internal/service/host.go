@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 
 	"xboard/internal/model"
 	"xboard/internal/repository"
+	"xboard/pkg/cache"
 	"xboard/pkg/utils"
 )
 
@@ -19,14 +21,16 @@ type HostService struct {
 	nodeRepo   *repository.ServerNodeRepository
 	userRepo   *repository.UserRepository
 	serverRepo *repository.ServerRepository
+	cache      *cache.Client
 }
 
-func NewHostService(hostRepo *repository.HostRepository, nodeRepo *repository.ServerNodeRepository, userRepo *repository.UserRepository, serverRepo *repository.ServerRepository) *HostService {
+func NewHostService(hostRepo *repository.HostRepository, nodeRepo *repository.ServerNodeRepository, userRepo *repository.UserRepository, serverRepo *repository.ServerRepository, cacheClient *cache.Client) *HostService {
 	return &HostService{
 		hostRepo:   hostRepo,
 		nodeRepo:   nodeRepo,
 		userRepo:   userRepo,
 		serverRepo: serverRepo,
+		cache:      cacheClient,
 	}
 }
 

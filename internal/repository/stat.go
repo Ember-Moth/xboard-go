@@ -165,3 +165,18 @@ func (r *StatRepository) GetTotalTraffic(startAt, endAt int64) (int64, error) {
 		Scan(&total).Error
 	return total, err
 }
+
+
+// GetServerTotalTraffic 获取节点总流量
+func (r *StatRepository) GetServerTotalTraffic(serverID int64) (model.StatServer, error) {
+	var stat model.StatServer
+	err := r.db.Model(&model.StatServer{}).
+		Select("server_id, COALESCE(SUM(u), 0) as u, COALESCE(SUM(d), 0) as d").
+		Where("server_id = ?", serverID).
+		Group("server_id").
+		First(&stat).Error
+	if err == gorm.ErrRecordNotFound {
+		return model.StatServer{ServerID: serverID, U: 0, D: 0}, nil
+	}
+	return stat, err
+}

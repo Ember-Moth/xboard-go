@@ -227,3 +227,32 @@ func (r *UserRepository) CountByDateRange(startTime, endTime int64) (int64, erro
 func getCurrentTimestamp() int64 {
 	return time.Now().Unix()
 }
+
+
+// FindByTelegramID 根据 Telegram ID 查找用户
+func (r *UserRepository) FindByTelegramID(telegramID int64) (*model.User, error) {
+	var user model.User
+	err := r.db.Preload("Plan").Where("telegram_id = ?", telegramID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUsersPaginated 获取用户列表（分页）
+func (r *UserRepository) GetUsersPaginated(page, pageSize int) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+
+	r.db.Model(&model.User{}).Count(&total)
+	err := r.db.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&users).Error
+	return users, total, err
+}
+
+
+// CountByRegisterIP 统计 IP 注册数量
+func (r *UserRepository) CountByRegisterIP(ip string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.User{}).Where("register_ip = ?", ip).Count(&count).Error
+	return count, err
+}

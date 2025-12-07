@@ -35,8 +35,13 @@ type User struct {
 	Token               string  `gorm:"column:token;size:32" json:"token"`
 	ExpiredAt           *int64  `gorm:"column:expired_at;default:0" json:"expired_at"`
 	Remarks             *string `gorm:"column:remarks;type:text" json:"remarks"`
+	LastCheckinAt       *int64  `gorm:"column:last_checkin_at" json:"last_checkin_at"`
+	RegisterIP          *string `gorm:"column:register_ip;size:45" json:"register_ip"`
 	CreatedAt           int64   `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt           int64   `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+
+	// 关联
+	Plan *Plan `gorm:"foreignKey:PlanID" json:"plan,omitempty"`
 }
 
 func (User) TableName() string {

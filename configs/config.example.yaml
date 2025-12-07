@@ -42,10 +42,32 @@ mail:
   encryption: "tls"  # ssl, tls, none
 
 telegram:
-  bot_token: ""  # Your Telegram Bot Token
+  bot_token: ""  # Your Telegram Bot Token from @BotFather
   chat_id: ""    # Admin Chat ID for notifications
 
 # Initial admin user (created on first startup)
 admin:
   email: "admin@example.com"
   password: "admin123456"
+
+# Site settings (can be changed in admin panel)
+# site:
+#   name: "XBoard"
+#   logo: ""
+#   description: ""
+#   primary_color: "#6366f1"
+#   currency: "CNY"
+#   currency_symbol: "¥"
+
+# Register settings
+# register:
+#   enable: true
+#   invite_only: false
+#   trial_enable: false
+#   trial_days: 1
+#   trial_traffic: 10  # GB
+
+# Payment settings
+# payment:
+#   currency: "CNY"
+#   symbol: "¥"

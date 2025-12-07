@@ -664,3 +664,165 @@ func AdminUpdateSettings(services *service.Services) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"data": true})
 	}
 }
+
+
+// ==================== 站点设置 ====================
+
+// AdminGetSiteSettings 获取站点设置
+func AdminGetSiteSettings(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		settings, err := services.Setting.GetSiteSettings()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": settings})
+	}
+}
+
+// AdminUpdateSiteSettings 更新站点设置
+func AdminUpdateSiteSettings(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var settings service.SiteSettings
+		if err := c.ShouldBindJSON(&settings); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := services.Setting.SetSiteSettings(&settings); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": true})
+	}
+}
+
+// ==================== Telegram 设置 ====================
+
+// AdminGetTelegramSettings 获取 Telegram 设置
+func AdminGetTelegramSettings(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		settings := map[string]interface{}{
+			"enable":    services.Setting.GetBool(service.SettingTelegramEnable, false),
+			"bot_token": services.Setting.GetString(service.SettingTelegramBotToken, ""),
+			"chat_id":   services.Setting.GetString(service.SettingTelegramChatID, ""),
+		}
+		c.JSON(http.StatusOK, gin.H{"data": settings})
+	}
+}
+
+// AdminUpdateTelegramSettings 更新 Telegram 设置
+func AdminUpdateTelegramSettings(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Enable   bool   `json:"enable"`
+			BotToken string `json:"bot_token"`
+			ChatID   string `json:"chat_id"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		enableStr := "0"
+		if req.Enable {
+			enableStr = "1"
+		}
+
+		services.Setting.Set(service.SettingTelegramEnable, enableStr)
+		services.Setting.Set(service.SettingTelegramBotToken, req.BotToken)
+		services.Setting.Set(service.SettingTelegramChatID, req.ChatID)
+
+		c.JSON(http.StatusOK, gin.H{"data": true})
+	}
+}
+
+// AdminSetTelegramWebhook 设置 Telegram Webhook
+func AdminSetTelegramWebhook(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			WebhookURL string `json:"webhook_url" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := services.Telegram.SetWebhook(req.WebhookURL); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": true})
+	}
+}
+
+// ==================== 支付管理 ====================
+
+// AdminListPayments 获取支付方式列表
+func AdminListPayments(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		payments, err := services.Payment.GetEnabledPayments()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": payments})
+	}
+}
+
+
+// ==================== 流量统计 ====================
+
+// AdminTrafficOverview 获取流量概览
+func AdminTrafficOverview(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		overview, err := services.Stats.GetTrafficOverview()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": overview})
+	}
+}
+
+// AdminServerTrafficOverview 获取节点流量概览
+func AdminServerTrafficOverview(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		overview, err := services.Stats.GetServerTrafficOverview()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": overview})
+	}
+}
+
+// AdminUserTrafficDetail 获取用户流量详情
+func AdminUserTrafficDetail(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+		detail, err := services.Stats.GetUserTrafficDetail(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": detail})
+	}
+}
+
+// AdminDailyTrafficStats 获取每日流量统计
+func AdminDailyTrafficStats(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+		stats, err := services.Stats.GetDailyTrafficStats(days)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": stats})
+	}
+}

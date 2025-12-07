@@ -80,6 +80,107 @@ func AgentGetConfig(services *service.Services) gin.HandlerFunc {
 	}
 }
 
+// AgentGetUsers 获取节点用户（支持增量同步）
+func AgentGetUsers(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host := getHostFromContext(c)
+		if host == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		nodeID, _ := strconv.ParseInt(c.Query("node_id"), 10, 64)
+		lastVersion, _ := strconv.ParseInt(c.Query("version"), 10, 64)
+		lastHash := c.Query("hash")
+
+		if nodeID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "node_id required"})
+			return
+		}
+
+		// 获取节点
+		node, err := services.Host.GetNodeByID(nodeID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
+			return
+		}
+
+		// 验证节点属于该主机
+		if node.HostID != host.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "node not belong to this host"})
+			return
+		}
+
+		// 获取用户列表（带缓存和增量同步）
+		result, err := services.User.GetNodeUsersWithCache(nodeID, node.GetGroupIDsAsInt64(), lastVersion)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 如果哈希相同，返回无变化
+		if lastHash != "" && result.Hash == lastHash {
+			c.JSON(http.StatusOK, gin.H{
+				"data": gin.H{
+					"version":    result.Version,
+					"hash":       result.Hash,
+					"has_change": false,
+				},
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"version":    result.Version,
+				"hash":       result.Hash,
+				"has_change": result.HasChange,
+				"users":      result.Users,
+			},
+		})
+	}
+}
+
+// AgentSyncStatus Agent 同步状态
+func AgentSyncStatus(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host := getHostFromContext(c)
+		if host == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var req struct {
+			Nodes []struct {
+				ID          int64 `json:"id"`
+				OnlineUsers int   `json:"online_users"`
+				Status      struct {
+					CPU    float64 `json:"cpu"`
+					Memory float64 `json:"memory"`
+					Disk   float64 `json:"disk"`
+				} `json:"status"`
+			} `json:"nodes"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 更新节点状态
+		for _, nodeData := range req.Nodes {
+			services.Server.UpdateOnlineUsers(nodeData.ID, "", nodeData.OnlineUsers)
+			services.Server.UpdateLoadStatus(nodeData.ID, "", map[string]interface{}{
+				"cpu":    nodeData.Status.CPU,
+				"memory": nodeData.Status.Memory,
+				"disk":   nodeData.Status.Disk,
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": "ok"})
+	}
+}
+
 // AgentReportTraffic 上报流量
 func AgentReportTraffic(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {

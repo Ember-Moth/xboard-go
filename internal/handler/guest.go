@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"xboard/internal/service"
 
@@ -15,10 +16,41 @@ func GuestRegister(services *service.Services) gin.HandlerFunc {
 			Email      string `json:"email" binding:"required,email"`
 			Password   string `json:"password" binding:"required,min=6"`
 			InviteCode string `json:"invite_code"`
+			EmailCode  string `json:"email_code"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 检查是否需要邮箱验证
+		if services.Setting.GetBool(service.SettingMailVerify, false) {
+			if req.EmailCode == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "请输入邮箱验证码"})
+				return
+			}
+			// 验证邮箱验证码
+			if !services.User.VerifyEmailCode(req.Email, req.EmailCode) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "验证码错误或已过期"})
+				return
+			}
+		}
+
+		// 检查 IP 注册限制
+		clientIP := c.ClientIP()
+		ipLimit := services.Setting.GetInt(service.SettingRegisterIPLimit, 0)
+		if ipLimit > 0 {
+			count, _ := services.User.CountByRegisterIP(clientIP)
+			if count >= int64(ipLimit) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "该 IP 注册次数已达上限"})
+				return
+			}
+		}
+
+		// 检查是否仅限邀请注册
+		if services.Setting.GetBool(service.SettingRegisterInviteOnly, false) && req.InviteCode == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "仅限邀请注册"})
 			return
 		}
 
@@ -33,7 +65,7 @@ func GuestRegister(services *service.Services) gin.HandlerFunc {
 			inviteUserID = &inviteCode.UserID
 		}
 
-		user, err := services.User.Register(req.Email, req.Password, inviteUserID)
+		user, err := services.User.RegisterWithIP(req.Email, req.Password, inviteUserID, clientIP)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -56,6 +88,71 @@ func GuestRegister(services *service.Services) gin.HandlerFunc {
 			},
 		})
 	}
+}
+
+// GuestSendEmailCode 发送邮箱验证码
+func GuestSendEmailCode(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Email string `json:"email" binding:"required,email"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 检查邮件是否配置
+		if !services.Mail.IsConfigured() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮件服务未配置"})
+			return
+		}
+
+		// 检查邮箱是否已注册
+		existing, _ := services.User.GetByEmail(req.Email)
+		if existing != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已注册"})
+			return
+		}
+
+		// 检查冷却时间
+		cooldown := services.User.GetEmailCodeCooldown(req.Email)
+		if cooldown > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请稍后再试", "cooldown": cooldown})
+			return
+		}
+
+		// 生成验证码
+		code := generateNumericCode(6)
+
+		// 存储验证码
+		if err := services.User.SetEmailCode(req.Email, code); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "发送失败"})
+			return
+		}
+
+		// 发送邮件
+		if err := services.Mail.SendVerifyCode(req.Email, code); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "发送失败，请稍后重试"})
+			return
+		}
+
+		// 设置冷却时间
+		services.User.SetEmailCodeCooldown(req.Email)
+
+		c.JSON(http.StatusOK, gin.H{"data": true})
+	}
+}
+
+// generateNumericCode 生成数字验证码
+func generateNumericCode(length int) string {
+	const digits = "0123456789"
+	code := make([]byte, length)
+	for i := range code {
+		code[i] = digits[time.Now().UnixNano()%10]
+		time.Sleep(time.Nanosecond)
+	}
+	return string(code)
 }
 
 // GuestLogin 用户登录
@@ -155,5 +252,32 @@ func GetKnowledgeCategories(services *service.Services) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"data": categories})
+	}
+}
+
+
+// GetPublicSettings 获取公开设置
+func GetPublicSettings(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		settings := services.Setting.GetPublicSettings()
+		c.JSON(http.StatusOK, gin.H{"data": settings})
+	}
+}
+
+// TelegramWebhook Telegram Webhook
+func TelegramWebhook(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var update service.TelegramUpdate
+		if err := c.ShouldBindJSON(&update); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := services.Telegram.HandleUpdate(&update); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": "ok"})
 	}
 }

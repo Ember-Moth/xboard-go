@@ -260,6 +260,7 @@ func (s *HostService) buildShadowTLSInbound(inbound map[string]interface{}, node
 	delete(inbound, "handshake_server")
 	delete(inbound, "handshake_port")
 	delete(inbound, "detour_method")
+}
 
 // GetUsersForNode 获取节点可用的用户列表
 func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]interface{}, error) {

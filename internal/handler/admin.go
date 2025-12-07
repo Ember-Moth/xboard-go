@@ -762,19 +762,6 @@ func AdminSetTelegramWebhook(services *service.Services) gin.HandlerFunc {
 
 // ==================== 支付管理 ====================
 
-// AdminListPayments 获取支付方式列表
-func AdminListPayments(services *service.Services) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		payments, err := services.Payment.GetEnabledPayments()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"data": payments})
-	}
-}
-
-
 // ==================== 流量统计 ====================
 
 // AdminTrafficOverview 获取流量概览

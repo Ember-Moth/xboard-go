@@ -314,13 +314,20 @@ func buildShadowsocks(server service.ServerInfo, user *model.User) map[string]in
 		cipher = m
 	}
 
+	// 密码：对于 SS2022，使用 server.Password（已包含服务器密钥:用户密钥格式）
+	// 对于普通 SS，使用用户 UUID
+	password := server.Password
+	if password == "" {
+		password = user.UUID
+	}
+
 	out := map[string]interface{}{
 		"type":        "shadowsocks",
 		"tag":         server.Name,
 		"server":      server.Host,
 		"server_port": port,
 		"method":      cipher,
-		"password":    server.Password,
+		"password":    password,
 	}
 
 	if plugin, ok := ps["plugin"].(string); ok && plugin != "" {

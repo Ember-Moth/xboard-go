@@ -62,9 +62,14 @@ func buildSurgeProxy(server service.ServerInfo, user *model.User) string {
 		} else if m, ok := ps["method"].(string); ok && m != "" {
 			cipher = m
 		}
+		// 密码
+		password := server.Password
+		if password == "" {
+			password = user.UUID
+		}
 		// Surge 支持的 SS 加密方式
 		line := fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s",
-			server.Name, server.Host, port, cipher, server.Password)
+			server.Name, server.Host, port, cipher, password)
 		
 		// 插件支持
 		if plugin, ok := ps["plugin"].(string); ok && plugin != "" {

@@ -83,13 +83,21 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 			cipher = c
 		}
 
+		// 密码：对于 SS2022，使用 server.Password（已包含服务器密钥:用户密钥格式）
+		// 对于普通 SS，使用用户 UUID
+		password := server.Password
+		if password == "" {
+			password = user.UUID
+		}
+
 		proxy := map[string]interface{}{
 			"name":     server.Name,
 			"type":     "ss",
 			"server":   server.Host,
 			"port":     port,
 			"cipher":   cipher,
-			"password": server.Password,
+			"password": password,
+			"udp":      true,
 		}
 		if plugin, ok := ps["plugin"].(string); ok && plugin != "" {
 			proxy["plugin"] = plugin

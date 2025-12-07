@@ -59,8 +59,15 @@ func generateSSLink(server service.ServerInfo, user *model.User) string {
 		cipher = m
 	}
 	
+	// 密码：对于 SS2022，使用 server.Password（已包含服务器密钥:用户密钥格式）
+	// 对于普通 SS，使用用户 UUID
+	password := server.Password
+	if password == "" {
+		password = user.UUID
+	}
+	
 	// Base64 encode method:password
-	userInfo := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", cipher, server.Password)))
+	userInfo := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", cipher, password)))
 	
 	link := fmt.Sprintf("ss://%s@%s:%s", userInfo, server.Host, server.Port)
 	

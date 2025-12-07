@@ -200,6 +200,11 @@ func (s *HostService) GenerateSingBoxConfig(hostID int64) (map[string]interface{
 			},
 			"final": "direct",
 		},
+		"experimental": map[string]interface{}{
+			"clash_api": map[string]interface{}{
+				"external_controller": "127.0.0.1:9090",
+			},
+		},
 	}
 
 	return config, nil

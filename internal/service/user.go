@@ -156,6 +156,11 @@ func (s *UserService) GetByUUID(uuid string) (*model.User, error) {
 	return s.userRepo.FindByUUID(uuid)
 }
 
+// GetByUUIDPrefix 根据 UUID 前缀获取用户
+func (s *UserService) GetByUUIDPrefix(prefix string) (*model.User, error) {
+	return s.userRepo.FindByUUIDPrefix(prefix)
+}
+
 // UpdateTraffic 更新用户流量
 func (s *UserService) UpdateTraffic(userID int64, u, d int64) error {
 	return s.userRepo.UpdateTraffic(userID, u, d)

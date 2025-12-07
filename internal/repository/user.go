@@ -257,3 +257,14 @@ func (r *UserRepository) CountByRegisterIP(ip string) (int64, error) {
 	err := r.db.Model(&model.User{}).Where("register_ip = ?", ip).Count(&count).Error
 	return count, err
 }
+
+
+// FindByUUIDPrefix 根据 UUID 前缀查找用户
+func (r *UserRepository) FindByUUIDPrefix(prefix string) (*model.User, error) {
+	var user model.User
+	err := r.db.Where("uuid LIKE ?", prefix+"%").First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}

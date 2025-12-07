@@ -52,6 +52,15 @@ type Agent struct {
 	httpClient    *http.Client
 	userVersions  map[int64]int64  // 节点用户版本缓存
 	userHashes    map[int64]string // 节点用户哈希缓存
+	lastTraffic   map[string]TrafficData // 上次流量数据，用于计算增量
+	nodeConfigs   []NodeConfig     // 当前节点配置
+	clashAPIPort  int              // Clash API 端口
+}
+
+// TrafficData 流量数据
+type TrafficData struct {
+	Upload   int64
+	Download int64
 }
 
 func NewAgent() *Agent {
@@ -63,6 +72,8 @@ func NewAgent() *Agent {
 		httpClient:   &http.Client{Timeout: 30 * time.Second},
 		userVersions: make(map[int64]int64),
 		userHashes:   make(map[int64]string),
+		lastTraffic:  make(map[string]TrafficData),
+		clashAPIPort: 9090,
 	}
 }
 
@@ -180,6 +191,9 @@ func (a *Agent) getConfig() (*AgentConfig, error) {
 }
 
 func (a *Agent) updateConfig(config *AgentConfig) (bool, error) {
+	// 保存节点配置用于流量上报
+	a.nodeConfigs = config.Nodes
+
 	// 注入用户到 inbounds
 	singboxConfig := config.SingBoxConfig
 	hasUserChange := false
@@ -205,6 +219,20 @@ func (a *Agent) updateConfig(config *AgentConfig) (bool, error) {
 		}
 		singboxConfig["inbounds"] = inbounds
 	}
+
+	// 添加 experimental 配置用于流量统计
+	if _, ok := singboxConfig["experimental"]; !ok {
+		singboxConfig["experimental"] = map[string]interface{}{}
+	}
+	experimental := singboxConfig["experimental"].(map[string]interface{})
+	
+	// 添加 Clash API 用于获取连接信息
+	if _, ok := experimental["clash_api"]; !ok {
+		experimental["clash_api"] = map[string]interface{}{
+			"external_controller": fmt.Sprintf("127.0.0.1:%d", a.clashAPIPort),
+		}
+	}
+	singboxConfig["experimental"] = experimental
 
 	configJSON, _ := json.MarshalIndent(singboxConfig, "", "  ")
 	configStr := string(configJSON)
@@ -245,6 +273,126 @@ func (a *Agent) stopSingbox() {
 	}
 }
 
+// ConnectionTraffic 连接流量记录
+type ConnectionTraffic struct {
+	Upload   int64
+	Download int64
+}
+
+// getTrafficFromClashAPI 从 Clash API 获取流量统计
+// 通过跟踪每个连接的流量变化来计算用户流量
+func (a *Agent) getTrafficFromClashAPI() (map[string]TrafficData, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/connections", a.clashAPIPort)
+	resp, err := a.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// 使用 map 解析以支持不同版本的 sing-box
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	// 按用户聚合当前连接的流量
+	traffic := make(map[string]TrafficData)
+	
+	connections, ok := result["connections"].([]interface{})
+	if !ok {
+		return traffic, nil
+	}
+
+	for _, c := range connections {
+		conn, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		upload, _ := conn["upload"].(float64)
+		download, _ := conn["download"].(float64)
+
+		// 获取用户名，尝试多种字段
+		var user string
+		if metadata, ok := conn["metadata"].(map[string]interface{}); ok {
+			// 尝试不同的字段名
+			if u, ok := metadata["inboundUser"].(string); ok && u != "" {
+				user = u
+			} else if u, ok := metadata["user"].(string); ok && u != "" {
+				user = u
+			} else if u, ok := metadata["inbound_user"].(string); ok && u != "" {
+				user = u
+			}
+		}
+
+		if user == "" {
+			continue
+		}
+
+		data := traffic[user]
+		data.Upload += int64(upload)
+		data.Download += int64(download)
+		traffic[user] = data
+	}
+
+	return traffic, nil
+}
+
+// reportTraffic 上报流量到面板
+func (a *Agent) reportTraffic() error {
+	traffic, err := a.getTrafficFromClashAPI()
+	if err != nil {
+		return err
+	}
+
+	// 调试：打印获取到的流量数据
+	if len(traffic) > 0 {
+		fmt.Printf("📊 获取到 %d 个用户的流量数据\n", len(traffic))
+	}
+
+	// 计算增量流量
+	trafficReport := make([]map[string]interface{}, 0)
+	for user, data := range traffic {
+		last := a.lastTraffic[user]
+		uploadDelta := data.Upload - last.Upload
+		downloadDelta := data.Download - last.Download
+
+		// 只上报有增量的用户
+		if uploadDelta > 0 || downloadDelta > 0 {
+			trafficReport = append(trafficReport, map[string]interface{}{
+				"username": user,
+				"upload":   uploadDelta,
+				"download": downloadDelta,
+			})
+			fmt.Printf("  用户 %s: ↑%.2f MB ↓%.2f MB\n", user, float64(uploadDelta)/1024/1024, float64(downloadDelta)/1024/1024)
+		}
+		a.lastTraffic[user] = data
+	}
+
+	if len(trafficReport) == 0 {
+		return nil
+	}
+
+	// 构建上报数据
+	nodes := make([]map[string]interface{}, 0)
+	for _, node := range a.nodeConfigs {
+		nodes = append(nodes, map[string]interface{}{
+			"id":    node.ID,
+			"users": trafficReport,
+		})
+	}
+
+	_, err = a.apiRequest("POST", "/traffic", map[string]interface{}{
+		"nodes": nodes,
+	})
+	if err != nil {
+		fmt.Printf("⚠ 流量上报失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 已上报 %d 个用户的流量\n", len(trafficReport))
+	}
+	return err
+}
+
 func (a *Agent) Run() {
 	fmt.Println("XBoard Agent v1.0.0")
 	fmt.Printf("面板: %s\n", a.panelURL)
@@ -277,6 +425,7 @@ func (a *Agent) Run() {
 	// 启动定时任务
 	heartbeatTicker := time.NewTicker(30 * time.Second)
 	configTicker := time.NewTicker(60 * time.Second)
+	trafficTicker := time.NewTicker(60 * time.Second) // 每分钟上报流量
 
 	// 信号处理
 	sigChan := make(chan os.Signal, 1)
@@ -287,6 +436,11 @@ func (a *Agent) Run() {
 		case <-heartbeatTicker.C:
 			if err := a.sendHeartbeat(); err != nil {
 				fmt.Printf("⚠ 心跳失败: %v\n", err)
+			}
+
+		case <-trafficTicker.C:
+			if err := a.reportTraffic(); err != nil {
+				// 流量上报失败不打印错误，可能是 sing-box 还没启动完成
 			}
 
 		case <-configTicker.C:
@@ -313,6 +467,7 @@ func (a *Agent) Run() {
 			fmt.Printf("\n收到信号 %v，正在退出...\n", sig)
 			heartbeatTicker.Stop()
 			configTicker.Stop()
+			trafficTicker.Stop()
 			a.stopSingbox()
 			return
 		}

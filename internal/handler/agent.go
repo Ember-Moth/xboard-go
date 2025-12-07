@@ -235,20 +235,32 @@ func AgentReportTraffic(services *service.Services) gin.HandlerFunc {
 
 		// 处理流量
 		for _, nodeData := range req.Nodes {
-			node, err := services.Host.GetNodeByID(nodeData.ID)
-			if err != nil {
-				continue
+			// 获取倍率：先尝试从 Server 获取，再尝试从 ServerNode 获取
+			var rate float64 = 1.0
+			
+			// 尝试从 Server 获取
+			server, err := services.Server.FindServer(nodeData.ID, "")
+			if err == nil && server != nil {
+				rate = server.Rate
+			} else {
+				// 尝试从 ServerNode 获取
+				node, err := services.Host.GetNodeByID(nodeData.ID)
+				if err == nil && node != nil {
+					rate = node.Rate
+				}
 			}
+
 			for _, userData := range nodeData.Users {
 				if userData.Upload == 0 && userData.Download == 0 {
 					continue
 				}
-				user, err := services.User.GetByUUID(userData.Username)
+				// Username 是 UUID 的前8位，使用前缀匹配
+				user, err := services.User.GetByUUIDPrefix(userData.Username)
 				if err != nil {
 					continue
 				}
-				u := int64(float64(userData.Upload) * node.Rate)
-				d := int64(float64(userData.Download) * node.Rate)
+				u := int64(float64(userData.Upload) * rate)
+				d := int64(float64(userData.Download) * rate)
 				services.User.UpdateTraffic(user.ID, u, d)
 			}
 		}

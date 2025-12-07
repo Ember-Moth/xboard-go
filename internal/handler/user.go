@@ -144,8 +144,9 @@ func UserCreateOrder(services *service.Services) gin.HandlerFunc {
 		}
 
 		var req struct {
-			PlanID int64  `json:"plan_id" binding:"required"`
-			Period string `json:"period" binding:"required"`
+			PlanID     int64  `json:"plan_id" binding:"required"`
+			Period     string `json:"period" binding:"required"`
+			CouponCode string `json:"coupon_code"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -153,7 +154,7 @@ func UserCreateOrder(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		order, err := services.Order.CreateOrder(user.ID, req.PlanID, req.Period)
+		order, err := services.Order.CreateOrderWithCoupon(user.ID, req.PlanID, req.Period, req.CouponCode)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

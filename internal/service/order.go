@@ -11,17 +11,104 @@ import (
 )
 
 type OrderService struct {
-	orderRepo *repository.OrderRepository
-	userRepo  *repository.UserRepository
-	planRepo  *repository.PlanRepository
+	orderRepo  *repository.OrderRepository
+	userRepo   *repository.UserRepository
+	planRepo   *repository.PlanRepository
+	couponRepo *repository.CouponRepository
 }
 
-func NewOrderService(orderRepo *repository.OrderRepository, userRepo *repository.UserRepository, planRepo *repository.PlanRepository) *OrderService {
+func NewOrderService(orderRepo *repository.OrderRepository, userRepo *repository.UserRepository, planRepo *repository.PlanRepository, couponRepo *repository.CouponRepository) *OrderService {
 	return &OrderService{
-		orderRepo: orderRepo,
-		userRepo:  userRepo,
-		planRepo:  planRepo,
+		orderRepo:  orderRepo,
+		userRepo:   userRepo,
+		planRepo:   planRepo,
+		couponRepo: couponRepo,
 	}
+}
+
+// CreateOrderWithCoupon 创建订单（带优惠券）
+func (s *OrderService) CreateOrderWithCoupon(userID, planID int64, period string, couponCode string) (*model.Order, error) {
+	// 获取套餐
+	plan, err := s.planRepo.FindByID(planID)
+	if err != nil {
+		return nil, errors.New("plan not found")
+	}
+
+	// 获取价格
+	price := plan.GetPriceByPeriod(period)
+	if price <= 0 {
+		return nil, errors.New("invalid period")
+	}
+
+	// 获取用户
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// 确定订单类型
+	orderType := model.OrderTypeNewPurchase
+	if user.PlanID != nil {
+		if *user.PlanID == planID {
+			orderType = model.OrderTypeRenewal
+		} else {
+			orderType = model.OrderTypeUpgrade
+		}
+	}
+
+	// 处理优惠券
+	var discountAmount int64
+	var couponID *int64
+	if couponCode != "" && s.couponRepo != nil {
+		coupon, err := s.couponRepo.FindByCode(couponCode)
+		if err == nil {
+			// 验证优惠券
+			now := time.Now().Unix()
+			if coupon.StartedAt <= now && coupon.EndedAt >= now {
+				// 计算折扣
+				switch coupon.Type {
+				case 1: // 固定金额
+					discountAmount = coupon.Value
+				case 2: // 百分比
+					discountAmount = price * coupon.Value / 100
+				}
+				if discountAmount > price {
+					discountAmount = price
+				}
+				couponID = &coupon.ID
+			}
+		}
+	}
+
+	order := &model.Order{
+		UserID:         userID,
+		PlanID:         planID,
+		Period:         period,
+		TradeNo:        uuid.New().String(),
+		TotalAmount:    price - discountAmount,
+		DiscountAmount: &discountAmount,
+		CouponID:       couponID,
+		Type:           orderType,
+		Status:         model.OrderStatusPending,
+		CreatedAt:      time.Now().Unix(),
+		UpdatedAt:      time.Now().Unix(),
+	}
+
+	// 设置邀请人
+	if user.InviteUserID != nil {
+		order.InviteUserID = user.InviteUserID
+	}
+
+	if err := s.orderRepo.Create(order); err != nil {
+		return nil, err
+	}
+
+	// 记录优惠券使用
+	if couponID != nil && s.couponRepo != nil {
+		s.couponRepo.RecordUsage(*couponID, order.ID, userID)
+	}
+
+	return order, nil
 }
 
 // CreateOrder 创建订单

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const email = ref('')
@@ -12,6 +13,14 @@ const confirmPassword = ref('')
 const inviteCode = ref('')
 const loading = ref(false)
 const error = ref('')
+
+// 从 URL 读取邀请码
+onMounted(() => {
+  const code = route.query.code as string
+  if (code) {
+    inviteCode.value = code
+  }
+})
 
 const handleRegister = async () => {
   if (!email.value || !password.value) {

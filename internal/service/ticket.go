@@ -221,16 +221,27 @@ func (s *TicketService) GetTicketDetail(ticketID, userID int64, isAdmin bool) (*
 		return nil, errors.New("permission denied")
 	}
 
-	messages, err := s.GetTicketMessages(ticketID, userID, isAdmin)
+	messages, err := s.messageRepo.FindByTicketID(ticketID)
 	if err != nil {
 		return nil, err
+	}
+
+	// 转换消息格式，添加 is_me 字段
+	msgList := make([]TicketMessageView, 0, len(messages))
+	for _, msg := range messages {
+		msgList = append(msgList, TicketMessageView{
+			ID:        msg.ID,
+			Message:   msg.Message,
+			IsMe:      msg.UserID == userID,
+			CreatedAt: msg.CreatedAt,
+		})
 	}
 
 	user, _ := s.userRepo.FindByID(ticket.UserID)
 
 	return &TicketDetail{
 		Ticket:    *ticket,
-		Messages:  messages,
+		Messages:  msgList,
 		UserEmail: user.Email,
 	}, nil
 }
@@ -264,11 +275,19 @@ type TicketMessageWithUser struct {
 	IsAdmin   bool   `json:"is_admin"`
 }
 
+// TicketMessageView 前端展示用的消息格式
+type TicketMessageView struct {
+	ID        int64  `json:"id"`
+	Message   string `json:"message"`
+	IsMe      bool   `json:"is_me"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 // TicketDetail 工单详情
 type TicketDetail struct {
 	model.Ticket
-	Messages  []TicketMessageWithUser `json:"messages"`
-	UserEmail string                  `json:"user_email"`
+	Messages  []TicketMessageView `json:"messages"`
+	UserEmail string              `json:"user_email"`
 }
 
 // TicketWithUser 带用户信息的工单

@@ -19,6 +19,10 @@ const selectedPlan = ref<Plan | null>(null)
 const selectedPeriod = ref('')
 const showModal = ref(false)
 const ordering = ref(false)
+const couponCode = ref('')
+const couponChecking = ref(false)
+const couponDiscount = ref(0)
+const couponError = ref('')
 
 const periods = [
   { key: 'monthly', name: '月付', months: 1 },
@@ -53,7 +57,37 @@ const openOrderModal = (plan: Plan) => {
   selectedPlan.value = plan
   const available = getAvailablePeriods(plan)
   selectedPeriod.value = available[0]?.key || ''
+  couponCode.value = ''
+  couponDiscount.value = 0
+  couponError.value = ''
   showModal.value = true
+}
+
+const checkCoupon = async () => {
+  if (!couponCode.value.trim() || !selectedPlan.value || !selectedPeriod.value) return
+  
+  couponChecking.value = true
+  couponError.value = ''
+  couponDiscount.value = 0
+  
+  try {
+    const res = await api.post('/api/v1/user/coupon/check', {
+      code: couponCode.value,
+      plan_id: selectedPlan.value.id,
+      period: selectedPeriod.value
+    })
+    couponDiscount.value = res.data.data.discount
+  } catch (e: any) {
+    couponError.value = e.response?.data?.error || '优惠券无效'
+  } finally {
+    couponChecking.value = false
+  }
+}
+
+const getFinalPrice = () => {
+  if (!selectedPlan.value || !selectedPeriod.value) return 0
+  const price = selectedPlan.value.prices[selectedPeriod.value] || 0
+  return Math.max(0, price - couponDiscount.value)
 }
 
 const createOrder = async () => {
@@ -64,6 +98,7 @@ const createOrder = async () => {
     const res = await api.post('/api/v1/user/order/create', {
       plan_id: selectedPlan.value.id,
       period: selectedPeriod.value,
+      coupon_code: couponCode.value || undefined,
     })
     showModal.value = false
     router.push('/orders')
@@ -149,13 +184,13 @@ onMounted(fetchPlans)
             <p class="text-gray-600">套餐：<span class="font-medium text-gray-900">{{ selectedPlan?.name }}</span></p>
           </div>
 
-          <div class="mb-6">
+          <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-2">选择周期</label>
             <div class="grid grid-cols-2 gap-2">
               <button
                 v-for="period in getAvailablePeriods(selectedPlan!)"
                 :key="period.key"
-                @click="selectedPeriod = period.key"
+                @click="selectedPeriod = period.key; couponDiscount = 0; couponError = ''"
                 :class="[
                   'p-3 rounded-xl border-2 transition-all',
                   selectedPeriod === period.key
@@ -166,6 +201,44 @@ onMounted(fetchPlans)
                 <div class="font-medium">{{ period.name }}</div>
                 <div class="text-sm text-gray-500">{{ formatPrice(selectedPlan!.prices[period.key]) }}</div>
               </button>
+            </div>
+          </div>
+
+          <!-- 优惠券 -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">优惠券</label>
+            <div class="flex gap-2">
+              <input
+                v-model="couponCode"
+                type="text"
+                placeholder="输入优惠券码"
+                class="flex-1 px-4 py-2 border border-gray-200 rounded-xl"
+              />
+              <button
+                @click="checkCoupon"
+                :disabled="couponChecking || !couponCode.trim()"
+                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 disabled:opacity-50"
+              >
+                {{ couponChecking ? '验证中...' : '验证' }}
+              </button>
+            </div>
+            <p v-if="couponError" class="text-red-500 text-sm mt-1">{{ couponError }}</p>
+            <p v-if="couponDiscount > 0" class="text-green-500 text-sm mt-1">优惠 {{ formatPrice(couponDiscount) }}</p>
+          </div>
+
+          <!-- 价格汇总 -->
+          <div class="mb-6 p-4 bg-gray-50 rounded-xl">
+            <div class="flex justify-between text-sm text-gray-600 mb-2">
+              <span>套餐价格</span>
+              <span>{{ formatPrice(selectedPlan!.prices[selectedPeriod] || 0) }}</span>
+            </div>
+            <div v-if="couponDiscount > 0" class="flex justify-between text-sm text-green-600 mb-2">
+              <span>优惠券折扣</span>
+              <span>-{{ formatPrice(couponDiscount) }}</span>
+            </div>
+            <div class="flex justify-between text-lg font-bold border-t pt-2">
+              <span>应付金额</span>
+              <span class="text-primary-600">{{ formatPrice(getFinalPrice()) }}</span>
             </div>
           </div>
 

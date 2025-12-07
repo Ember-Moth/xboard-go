@@ -32,7 +32,7 @@ func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *confi
 	mailService := NewMailService(cfg.Mail)
 	telegramService := NewTelegramService(cfg.Telegram)
 	serverService := NewServerService(repos.Server, repos.User, cache, cfg)
-	orderService := NewOrderService(repos.Order, repos.User, repos.Plan)
+	orderService := NewOrderService(repos.Order, repos.User, repos.Plan, repos.Coupon)
 
 	return &Services{
 		User:      NewUserService(repos.User, cache),

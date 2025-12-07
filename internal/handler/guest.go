@@ -12,9 +12,9 @@ import (
 func GuestRegister(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			Email        string `json:"email" binding:"required,email"`
-			Password     string `json:"password" binding:"required,min=6"`
-			InviteCode   string `json:"invite_code"`
+			Email      string `json:"email" binding:"required,email"`
+			Password   string `json:"password" binding:"required,min=6"`
+			InviteCode string `json:"invite_code"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -22,13 +22,26 @@ func GuestRegister(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: 处理邀请码
+		// 处理邀请码
 		var inviteUserID *int64
+		if req.InviteCode != "" {
+			inviteCode, err := services.Invite.ValidateInviteCode(req.InviteCode)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的邀请码"})
+				return
+			}
+			inviteUserID = &inviteCode.UserID
+		}
 
 		user, err := services.User.Register(req.Email, req.Password, inviteUserID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// 标记邀请码已使用
+		if req.InviteCode != "" {
+			services.Invite.UseInviteCode(req.InviteCode, user.ID)
 		}
 
 		token, err := services.Auth.GenerateToken(user)

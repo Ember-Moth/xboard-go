@@ -586,12 +586,10 @@ func getDefaultSingBoxConfig() map[string]interface{} {
 		"route": map[string]interface{}{
 			"rules": []map[string]interface{}{
 				{"protocol": []string{"dns"}, "outbound": "dns-out"},
-				{"geoip": []string{"private"}, "outbound": "direct"},
-				{"geosite": []string{"cn"}, "outbound": "direct"},
-				{"geoip": []string{"cn"}, "outbound": "direct"},
+				{"ip_is_private": true, "outbound": "direct"},
 			},
-			"final":                   "proxy",
-			"auto_detect_interface":   true,
+			"final":                 "proxy",
+			"auto_detect_interface": true,
 		},
 	}
 }

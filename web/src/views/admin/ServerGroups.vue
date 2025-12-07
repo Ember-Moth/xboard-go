@@ -84,7 +84,7 @@ const form = ref({ name: '' })
 
 const fetchGroups = async () => {
   try {
-    const res = await api.get('/admin/server_groups')
+    const res = await api.get('/api/v2/admin/server_groups')
     groups.value = res.data.data || []
   } catch (e) {
     console.error(e)
@@ -106,9 +106,9 @@ const closeModal = () => {
 const saveGroup = async () => {
   try {
     if (editingGroup.value) {
-      await api.put(`/admin/server_group/${editingGroup.value.id}`, form.value)
+      await api.put(`/api/v2/admin/server_group/${editingGroup.value.id}`, form.value)
     } else {
-      await api.post('/admin/server_group', form.value)
+      await api.post('/api/v2/admin/server_group', form.value)
     }
     closeModal()
     fetchGroups()
@@ -120,7 +120,7 @@ const saveGroup = async () => {
 const deleteGroup = async (id: number) => {
   if (!confirm('确定删除该用户组？')) return
   try {
-    await api.delete(`/admin/server_group/${id}`)
+    await api.delete(`/api/v2/admin/server_group/${id}`)
     fetchGroups()
   } catch (e) {
     console.error(e)

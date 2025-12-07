@@ -109,11 +109,11 @@ systemctl start xboard-agent
   "flow": "xtls-rprx-vision",
   "tls": {
     "enabled": true,
-    "server_name": "www.microsoft.com",
+    "server_name": "addons.mozilla.org",
     "reality": {
       "enabled": true,
       "handshake": {
-        "server": "www.microsoft.com",
+        "server": "addons.mozilla.org",
         "server_port": 443
       }
     }

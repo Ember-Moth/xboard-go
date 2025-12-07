@@ -209,10 +209,57 @@ func (s *HostService) buildInbound(node *model.ServerNode) map[string]interface{
 		inbound["users"] = []interface{}{}
 	case model.NodeTypeShadowsocks:
 		inbound["users"] = []interface{}{}
+	case model.NodeTypeAnyTLS:
+		inbound["users"] = []interface{}{}
+	case model.NodeTypeShadowTLS:
+		// ShadowTLS 需要特殊处理
+		s.buildShadowTLSInbound(inbound, node)
+	case model.NodeTypeNaive:
+		inbound["users"] = []interface{}{}
 	}
 
 	return inbound
 }
+
+// buildShadowTLSInbound 构建 ShadowTLS inbound
+func (s *HostService) buildShadowTLSInbound(inbound map[string]interface{}, node *model.ServerNode) {
+	ps := node.ProtocolSettings
+	
+	// ShadowTLS v3 配置
+	version := 3
+	if v, ok := ps["version"].(float64); ok {
+		version = int(v)
+	}
+	inbound["version"] = version
+	
+	// 握手服务器
+	handshakeServer := "addons.mozilla.org"
+	if hs, ok := ps["handshake_server"].(string); ok && hs != "" {
+		handshakeServer = hs
+	}
+	handshakePort := 443
+	if hp, ok := ps["handshake_port"].(float64); ok {
+		handshakePort = int(hp)
+	}
+	inbound["handshake"] = map[string]interface{}{
+		"server":      handshakeServer,
+		"server_port": handshakePort,
+	}
+	
+	// 严格模式
+	if strictMode, ok := ps["strict_mode"].(bool); ok {
+		inbound["strict_mode"] = strictMode
+	} else {
+		inbound["strict_mode"] = true
+	}
+	
+	// 用户列表
+	inbound["users"] = []interface{}{}
+	
+	// 删除不需要的字段
+	delete(inbound, "handshake_server")
+	delete(inbound, "handshake_port")
+	delete(inbound, "detour_method")
 
 // GetUsersForNode 获取节点可用的用户列表
 func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]interface{}, error) {
@@ -244,7 +291,12 @@ func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]inte
 			userConfig["password"] = s.generateSS2022Password(node, &user)
 		case model.NodeTypeVMess, model.NodeTypeVLESS:
 			userConfig["uuid"] = user.UUID
-		case model.NodeTypeTrojan, model.NodeTypeHysteria2, model.NodeTypeTUIC:
+		case model.NodeTypeTrojan, model.NodeTypeHysteria2, model.NodeTypeTUIC, model.NodeTypeAnyTLS:
+			userConfig["password"] = user.UUID
+		case model.NodeTypeShadowTLS:
+			userConfig["password"] = user.UUID
+		case model.NodeTypeNaive:
+			userConfig["username"] = user.UUID[:8]
 			userConfig["password"] = user.UUID
 		}
 
@@ -295,16 +347,35 @@ func (s *HostService) GetDefaultNodeConfig(nodeType string) map[string]interface
 			},
 			"tls_settings": map[string]interface{}{
 				"enabled":     true,
-				"server_name": "www.microsoft.com",
+				"server_name": "addons.mozilla.org",
 				"reality": map[string]interface{}{
 					"enabled": true,
 					"handshake": map[string]interface{}{
-						"server":      "www.microsoft.com",
+						"server":      "addons.mozilla.org",
 						"server_port": 443,
 					},
 					"private_key": "", // Agent 自动生成
 					"short_id":    []string{"0123456789abcdef"},
 				},
+			},
+		}
+	case model.NodeTypeVMess:
+		return map[string]interface{}{
+			"name":        "VMess节点",
+			"listen_port": 443,
+			"protocol_settings": map[string]interface{}{
+				"security": "auto",
+			},
+			"transport_settings": map[string]interface{}{
+				"type": "ws",
+				"path": "/vmess",
+				"headers": map[string]interface{}{
+					"Host": "",
+				},
+			},
+			"tls_settings": map[string]interface{}{
+				"enabled":     false,
+				"server_name": "",
 			},
 		}
 	case model.NodeTypeTrojan:
@@ -331,6 +402,53 @@ func (s *HostService) GetDefaultNodeConfig(nodeType string) map[string]interface
 			"tls_settings": map[string]interface{}{
 				"enabled":     true,
 				"server_name": "",
+			},
+		}
+	case model.NodeTypeTUIC:
+		return map[string]interface{}{
+			"name":        "TUIC节点",
+			"listen_port": 443,
+			"protocol_settings": map[string]interface{}{
+				"congestion_control": "bbr",
+			},
+			"tls_settings": map[string]interface{}{
+				"enabled": true,
+				"alpn":    []string{"h3"},
+			},
+		}
+	case model.NodeTypeAnyTLS:
+		return map[string]interface{}{
+			"name":        "AnyTLS节点",
+			"listen_port": 443,
+			"protocol_settings": map[string]interface{}{
+				"padding_scheme": []interface{}{},
+			},
+			"tls_settings": map[string]interface{}{
+				"enabled": true,
+			},
+		}
+	case model.NodeTypeShadowTLS:
+		return map[string]interface{}{
+			"name":        "ShadowTLS节点",
+			"listen_port": 443,
+			"protocol_settings": map[string]interface{}{
+				"version":           3,
+				"handshake_server":  "addons.mozilla.org",
+				"handshake_port":    443,
+				"strict_mode":       true,
+				"detour_method":     "2022-blake3-aes-128-gcm",
+			},
+		}
+	case model.NodeTypeNaive:
+		return map[string]interface{}{
+			"name":        "NaiveProxy节点",
+			"listen_port": 443,
+			"tls_settings": map[string]interface{}{
+				"enabled": true,
+				"acme": map[string]interface{}{
+					"domain": "",
+					"email":  "",
+				},
 			},
 		}
 	default:

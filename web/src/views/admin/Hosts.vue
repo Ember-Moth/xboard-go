@@ -45,8 +45,13 @@ const editingNode = ref<Partial<ServerNode>>({})
 const nodeTypes = [
   { value: 'shadowsocks', label: 'Shadowsocks 2022' },
   { value: 'vless', label: 'VLESS Reality' },
+  { value: 'vmess', label: 'VMess' },
   { value: 'trojan', label: 'Trojan' },
   { value: 'hysteria2', label: 'Hysteria2' },
+  { value: 'tuic', label: 'TUIC v5' },
+  { value: 'anytls', label: 'AnyTLS' },
+  { value: 'shadowtls', label: 'ShadowTLS v3' },
+  { value: 'naive', label: 'NaiveProxy' },
 ]
 
 const fetchHosts = async () => {
@@ -383,9 +388,74 @@ onMounted(fetchHosts)
 
             <div v-if="editingNode.type === 'vless'">
               <label class="block text-sm font-medium text-gray-700 mb-1">Reality 目标域名</label>
-              <input v-model="editingNode.tls_settings!.server_name" type="text" placeholder="www.microsoft.com"
+              <input v-model="editingNode.tls_settings!.server_name" type="text" placeholder="addons.mozilla.org"
                 class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
               <p class="text-xs text-gray-500 mt-1">Agent 会自动生成 Reality 密钥对</p>
+            </div>
+
+            <!-- VMess 设置 -->
+            <div v-if="editingNode.type === 'vmess'" class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">传输方式</label>
+                <select v-model="editingNode.transport_settings!.type" class="w-full px-4 py-2 border border-gray-200 rounded-xl">
+                  <option value="ws">WebSocket</option>
+                  <option value="grpc">gRPC</option>
+                  <option value="tcp">TCP</option>
+                </select>
+              </div>
+              <div v-if="editingNode.transport_settings?.type === 'ws'">
+                <label class="block text-sm font-medium text-gray-700 mb-1">WebSocket 路径</label>
+                <input v-model="editingNode.transport_settings!.path" type="text" placeholder="/vmess"
+                  class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+            </div>
+
+            <!-- TUIC 设置 -->
+            <div v-if="editingNode.type === 'tuic'">
+              <label class="block text-sm font-medium text-gray-700 mb-1">拥塞控制</label>
+              <select v-model="editingNode.protocol_settings!.congestion_control" class="w-full px-4 py-2 border border-gray-200 rounded-xl">
+                <option value="bbr">BBR</option>
+                <option value="cubic">Cubic</option>
+                <option value="new_reno">New Reno</option>
+              </select>
+            </div>
+
+            <!-- Hysteria2 设置 -->
+            <div v-if="editingNode.type === 'hysteria2'" class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">上行带宽 (Mbps)</label>
+                <input v-model.number="editingNode.protocol_settings!.up_mbps" type="number" placeholder="100"
+                  class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">下行带宽 (Mbps)</label>
+                <input v-model.number="editingNode.protocol_settings!.down_mbps" type="number" placeholder="100"
+                  class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+            </div>
+
+            <!-- ShadowTLS 设置 -->
+            <div v-if="editingNode.type === 'shadowtls'" class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">握手服务器</label>
+                <input v-model="editingNode.protocol_settings!.handshake_server" type="text" placeholder="addons.mozilla.org"
+                  class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">内层加密方式</label>
+                <select v-model="editingNode.protocol_settings!.detour_method" class="w-full px-4 py-2 border border-gray-200 rounded-xl">
+                  <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+                  <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Trojan/Naive TLS 设置 -->
+            <div v-if="['trojan', 'naive'].includes(editingNode.type!)">
+              <label class="block text-sm font-medium text-gray-700 mb-1">TLS 域名 (ACME 自动申请证书)</label>
+              <input v-model="editingNode.tls_settings!.server_name" type="text" placeholder="your-domain.com"
+                class="w-full px-4 py-2 border border-gray-200 rounded-xl" />
+              <p class="text-xs text-gray-500 mt-1">需要将域名解析到服务器 IP</p>
             </div>
           </div>
 

@@ -145,10 +145,69 @@ func buildSingBoxOutbound(server service.ServerInfo, user *model.User) map[strin
 		return buildSocks(server, user)
 	case model.ServerTypeHTTP:
 		return buildHTTP(server, user)
+	case "shadowtls":
+		return buildShadowTLS(server, user)
+	case "naive":
+		return buildNaive(server, user)
 	}
 
 	_ = ps
 	return nil
+}
+
+func buildShadowTLS(server service.ServerInfo, user *model.User) map[string]interface{} {
+	ps := server.ProtocolSettings
+	port := parsePort(server.Port)
+
+	// ShadowTLS 需要配合 Shadowsocks 使用
+	out := map[string]interface{}{
+		"type":        "shadowtls",
+		"tag":         server.Name,
+		"server":      server.Host,
+		"server_port": port,
+		"version":     3,
+		"password":    user.UUID,
+		"tls": map[string]interface{}{
+			"enabled":     true,
+			"server_name": "addons.mozilla.org",
+			"utls": map[string]interface{}{
+				"enabled":     true,
+				"fingerprint": "chrome",
+			},
+		},
+	}
+
+	// 握手服务器
+	if hs, ok := ps["handshake_server"].(string); ok && hs != "" {
+		out["tls"].(map[string]interface{})["server_name"] = hs
+	}
+
+	return out
+}
+
+func buildNaive(server service.ServerInfo, user *model.User) map[string]interface{} {
+	ps := server.ProtocolSettings
+	port := parsePort(server.Port)
+
+	out := map[string]interface{}{
+		"type":        "naive",
+		"tag":         server.Name,
+		"server":      server.Host,
+		"server_port": port,
+		"username":    user.UUID[:8],
+		"password":    user.UUID,
+		"tls": map[string]interface{}{
+			"enabled": true,
+		},
+	}
+
+	if tls, ok := ps["tls"].(map[string]interface{}); ok {
+		if sn, ok := tls["server_name"].(string); ok && sn != "" {
+			out["tls"].(map[string]interface{})["server_name"] = sn
+		}
+	}
+
+	return out
 }
 
 func buildAnyTLS(server service.ServerInfo, user *model.User) map[string]interface{} {

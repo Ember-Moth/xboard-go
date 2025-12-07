@@ -55,6 +55,10 @@ const (
 	NodeTypeHysteria2   = "hysteria2"
 	NodeTypeTUIC        = "tuic"
 	NodeTypeAnyTLS      = "anytls"
+	NodeTypeShadowTLS   = "shadowtls"
+	NodeTypeNaive       = "naive"
+	NodeTypeSocks       = "socks"
+	NodeTypeHTTP        = "http"
 )
 
 // GetGroupIDsAsInt64 获取 group_ids 为 int64 数组

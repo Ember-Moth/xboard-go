@@ -181,6 +181,79 @@ func buildSurgeProxy(server service.ServerInfo, user *model.User) string {
 			}
 		}
 		return line
+
+	case model.ServerTypeVless:
+		// Surge 5+ 支持 VLESS
+		line := fmt.Sprintf("%s = vless, %s, %d, username=%s",
+			server.Name, server.Host, port, user.UUID)
+		
+		if flow, ok := ps["flow"].(string); ok && flow != "" {
+			line += fmt.Sprintf(", flow=%s", flow)
+		}
+		
+		if tls, ok := ps["tls"].(float64); ok {
+			if tls == 2 { // Reality
+				line += ", tls=true"
+				if reality, ok := ps["reality_settings"].(map[string]interface{}); ok {
+					if sn, ok := reality["server_name"].(string); ok {
+						line += fmt.Sprintf(", sni=%s", sn)
+					}
+					if pk, ok := reality["public_key"].(string); ok {
+						line += fmt.Sprintf(", reality-public-key=%s", pk)
+					}
+					if sid, ok := reality["short_id"].(string); ok && sid != "" {
+						line += fmt.Sprintf(", reality-short-id=%s", sid)
+					}
+				}
+			} else if tls > 0 {
+				line += ", tls=true"
+				if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+					if sn, ok := tlsSettings["server_name"].(string); ok {
+						line += fmt.Sprintf(", sni=%s", sn)
+					}
+				}
+			}
+		}
+		
+		if network, ok := ps["network"].(string); ok {
+			switch network {
+			case "ws":
+				line += ", ws=true"
+				if ns, ok := ps["network_settings"].(map[string]interface{}); ok {
+					if path, ok := ns["path"].(string); ok {
+						line += fmt.Sprintf(", ws-path=%s", path)
+					}
+					if headers, ok := ns["headers"].(map[string]interface{}); ok {
+						if host, ok := headers["Host"].(string); ok {
+							line += fmt.Sprintf(", ws-headers=Host:%s", host)
+						}
+					}
+				}
+			case "grpc":
+				line += ", grpc=true"
+				if ns, ok := ps["network_settings"].(map[string]interface{}); ok {
+					if sn, ok := ns["serviceName"].(string); ok {
+						line += fmt.Sprintf(", grpc-service-name=%s", sn)
+					}
+				}
+			}
+		}
+		return line
+
+	case "shadowtls":
+		// ShadowTLS 在 Surge 中使用 SS + shadow-tls 插件
+		cipher := "2022-blake3-aes-128-gcm"
+		if method, ok := ps["detour_method"].(string); ok && method != "" {
+			cipher = method
+		}
+		handshakeServer := "addons.mozilla.org"
+		if hs, ok := ps["handshake_server"].(string); ok && hs != "" {
+			handshakeServer = hs
+		}
+		
+		line := fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s, shadow-tls-password=%s, shadow-tls-sni=%s, shadow-tls-version=3",
+			server.Name, server.Host, port, cipher, user.UUID, user.UUID, handshakeServer)
+		return line
 	}
 
 	return ""

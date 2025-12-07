@@ -39,6 +39,10 @@ func generateLink(server service.ServerInfo, user *model.User) string {
 		return generateHysteriaLink(server, user)
 	case model.ServerTypeTuic:
 		return generateTuicLink(server, user)
+	case model.ServerTypeAnytls:
+		return generateAnyTLSLink(server, user)
+	case "shadowtls":
+		return generateShadowTLSLink(server, user)
 	}
 	return ""
 }
@@ -141,6 +145,7 @@ func generateVlessLink(server service.ServerInfo, user *model.User) string {
 	if tls, ok := ps["tls"].(float64); ok {
 		if tls == 2 { // Reality
 			params.Set("security", "reality")
+			params.Set("fp", "chrome")
 			if reality, ok := ps["reality_settings"].(map[string]interface{}); ok {
 				if pk, ok := reality["public_key"].(string); ok {
 					params.Set("pbk", pk)
@@ -154,12 +159,15 @@ func generateVlessLink(server service.ServerInfo, user *model.User) string {
 			}
 		} else if tls > 0 {
 			params.Set("security", "tls")
+			params.Set("fp", "chrome")
 			if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
 				if sn, ok := tlsSettings["server_name"].(string); ok {
 					params.Set("sni", sn)
 				}
 			}
 		}
+	} else {
+		params.Set("security", "none")
 	}
 
 	// Network settings
@@ -294,5 +302,56 @@ func generateTuicLink(server service.ServerInfo, user *model.User) string {
 
 	link := fmt.Sprintf("tuic://%s:%s@%s:%s?%s#%s",
 		user.UUID, user.UUID, server.Host, server.Port, params.Encode(), url.QueryEscape(server.Name))
+	return link
+}
+
+// anytls://password@host:port?params#name
+func generateAnyTLSLink(server service.ServerInfo, user *model.User) string {
+	ps := server.ProtocolSettings
+	
+	params := url.Values{}
+
+	if tls, ok := ps["tls"].(map[string]interface{}); ok {
+		if sn, ok := tls["server_name"].(string); ok && sn != "" {
+			params.Set("sni", sn)
+		}
+		if insecure, ok := tls["allow_insecure"].(bool); ok && insecure {
+			params.Set("insecure", "1")
+		}
+	}
+
+	link := fmt.Sprintf("anytls://%s@%s:%s", user.UUID, server.Host, server.Port)
+	if len(params) > 0 {
+		link += "?" + params.Encode()
+	}
+	link += "#" + url.QueryEscape(server.Name)
+	return link
+}
+
+// ShadowTLS 使用 ss:// 格式，带 shadow-tls 插件
+func generateShadowTLSLink(server service.ServerInfo, user *model.User) string {
+	ps := server.ProtocolSettings
+	
+	// 获取加密方式
+	cipher := "2022-blake3-aes-128-gcm"
+	if method, ok := ps["detour_method"].(string); ok && method != "" {
+		cipher = method
+	}
+	
+	// 握手服务器
+	handshakeServer := "addons.mozilla.org"
+	if hs, ok := ps["handshake_server"].(string); ok && hs != "" {
+		handshakeServer = hs
+	}
+	
+	// Base64 encode method:password
+	userInfo := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", cipher, user.UUID)))
+	
+	params := url.Values{}
+	params.Set("plugin", "shadow-tls")
+	params.Set("plugin-opts", fmt.Sprintf("host=%s;password=%s;version=3", handshakeServer, user.UUID))
+	
+	link := fmt.Sprintf("ss://%s@%s:%s?%s#%s",
+		userInfo, server.Host, server.Port, params.Encode(), url.QueryEscape(server.Name))
 	return link
 }

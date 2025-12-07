@@ -155,6 +155,89 @@ func buildQuantumultXProxy(server service.ServerInfo, user *model.User) string {
 			line += fmt.Sprintf(", tag=%s", server.Name)
 			return line
 		}
+
+	case model.ServerTypeTuic:
+		// tuic=example.com:443, password=pwd, uuid=uuid, tag=节点名
+		line := fmt.Sprintf("tuic=%s:%d, password=%s, uuid=%s",
+			server.Host, port, user.UUID, user.UUID)
+
+		if cc, ok := ps["congestion_control"].(string); ok {
+			line += fmt.Sprintf(", congestion-control=%s", cc)
+		}
+
+		if tls, ok := ps["tls"].(map[string]interface{}); ok {
+			if sn, ok := tls["server_name"].(string); ok {
+				line += fmt.Sprintf(", sni=%s", sn)
+			}
+			if insecure, ok := tls["allow_insecure"].(bool); ok && insecure {
+				line += ", skip-cert-verify=true"
+			}
+		}
+
+		line += fmt.Sprintf(", tag=%s", server.Name)
+		return line
+
+	case model.ServerTypeVless:
+		// vless=example.com:443, method=none, password=uuid, tag=节点名
+		line := fmt.Sprintf("vless=%s:%d, method=none, password=%s",
+			server.Host, port, user.UUID)
+
+		if tls, ok := ps["tls"].(float64); ok {
+			if tls == 2 { // Reality
+				line += ", obfs=over-tls, tls-verification=false"
+				if reality, ok := ps["reality_settings"].(map[string]interface{}); ok {
+					if sn, ok := reality["server_name"].(string); ok {
+						line += fmt.Sprintf(", tls-host=%s", sn)
+					}
+				}
+			} else if tls > 0 {
+				line += ", obfs=over-tls, tls-verification=true"
+				if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+					if sn, ok := tlsSettings["server_name"].(string); ok {
+						line += fmt.Sprintf(", tls-host=%s", sn)
+					}
+				}
+			}
+		}
+
+		if network, ok := ps["network"].(string); ok {
+			switch network {
+			case "ws":
+				if tls, ok := ps["tls"].(float64); ok && tls > 0 {
+					line += ", obfs=wss"
+				} else {
+					line += ", obfs=ws"
+				}
+				if ns, ok := ps["network_settings"].(map[string]interface{}); ok {
+					if path, ok := ns["path"].(string); ok {
+						line += fmt.Sprintf(", obfs-uri=%s", path)
+					}
+					if headers, ok := ns["headers"].(map[string]interface{}); ok {
+						if host, ok := headers["Host"].(string); ok {
+							line += fmt.Sprintf(", obfs-host=%s", host)
+						}
+					}
+				}
+			}
+		}
+
+		line += ", fast-open=false, udp-relay=true"
+		line += fmt.Sprintf(", tag=%s", server.Name)
+		return line
+
+	case model.ServerTypeAnytls:
+		// anytls=example.com:443, password=pwd, tag=节点名
+		line := fmt.Sprintf("anytls=%s:%d, password=%s",
+			server.Host, port, user.UUID)
+
+		if tls, ok := ps["tls"].(map[string]interface{}); ok {
+			if sn, ok := tls["server_name"].(string); ok {
+				line += fmt.Sprintf(", sni=%s", sn)
+			}
+		}
+
+		line += fmt.Sprintf(", tag=%s", server.Name)
+		return line
 	}
 
 	return ""
@@ -231,6 +314,120 @@ func buildLoonProxy(server service.ServerInfo, user *model.User) string {
 
 		if insecure, ok := ps["allow_insecure"].(bool); ok && insecure {
 			line += ",skip-cert-verify=true"
+		}
+
+		return line
+
+	case model.ServerTypeHysteria:
+		version := 2
+		if v, ok := ps["version"].(float64); ok {
+			version = int(v)
+		}
+
+		if version == 2 {
+			// 节点名 = Hysteria2,服务器地址,端口,密码
+			line := fmt.Sprintf("%s = Hysteria2,%s,%d,\"%s\"",
+				server.Name, server.Host, port, user.UUID)
+
+			if tls, ok := ps["tls"].(map[string]interface{}); ok {
+				if sn, ok := tls["server_name"].(string); ok {
+					line += fmt.Sprintf(",tls-name=%s", sn)
+				}
+				if insecure, ok := tls["allow_insecure"].(bool); ok && insecure {
+					line += ",skip-cert-verify=true"
+				}
+			}
+
+			if bw, ok := ps["bandwidth"].(map[string]interface{}); ok {
+				if down, ok := bw["down"].(float64); ok {
+					line += fmt.Sprintf(",download=%d", int(down))
+				}
+			}
+
+			return line
+		}
+
+	case model.ServerTypeTuic:
+		// 节点名 = tuic,服务器地址,端口,uuid,密码
+		line := fmt.Sprintf("%s = tuic,%s,%d,\"%s\",\"%s\"",
+			server.Name, server.Host, port, user.UUID, user.UUID)
+
+		if tls, ok := ps["tls"].(map[string]interface{}); ok {
+			if sn, ok := tls["server_name"].(string); ok {
+				line += fmt.Sprintf(",tls-name=%s", sn)
+			}
+		}
+
+		return line
+
+	case model.ServerTypeVless:
+		// 节点名 = vless,服务器地址,端口,uuid
+		line := fmt.Sprintf("%s = vless,%s,%d,\"%s\"",
+			server.Name, server.Host, port, user.UUID)
+
+		if flow, ok := ps["flow"].(string); ok && flow != "" {
+			line += fmt.Sprintf(",flow=%s", flow)
+		}
+
+		if tls, ok := ps["tls"].(float64); ok {
+			if tls == 2 { // Reality
+				line += ",over-tls=true"
+				if reality, ok := ps["reality_settings"].(map[string]interface{}); ok {
+					if sn, ok := reality["server_name"].(string); ok {
+						line += fmt.Sprintf(",tls-name=%s", sn)
+					}
+					if pk, ok := reality["public_key"].(string); ok {
+						line += fmt.Sprintf(",reality-public-key=%s", pk)
+					}
+					if sid, ok := reality["short_id"].(string); ok && sid != "" {
+						line += fmt.Sprintf(",reality-short-id=%s", sid)
+					}
+				}
+			} else if tls > 0 {
+				line += ",over-tls=true"
+				if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+					if sn, ok := tlsSettings["server_name"].(string); ok {
+						line += fmt.Sprintf(",tls-name=%s", sn)
+					}
+				}
+			}
+		}
+
+		if network, ok := ps["network"].(string); ok {
+			switch network {
+			case "ws":
+				line += ",transport=ws"
+				if ns, ok := ps["network_settings"].(map[string]interface{}); ok {
+					if path, ok := ns["path"].(string); ok {
+						line += fmt.Sprintf(",path=%s", path)
+					}
+					if headers, ok := ns["headers"].(map[string]interface{}); ok {
+						if host, ok := headers["Host"].(string); ok {
+							line += fmt.Sprintf(",host=%s", host)
+						}
+					}
+				}
+			case "grpc":
+				line += ",transport=grpc"
+				if ns, ok := ps["network_settings"].(map[string]interface{}); ok {
+					if sn, ok := ns["serviceName"].(string); ok {
+						line += fmt.Sprintf(",grpc-service-name=%s", sn)
+					}
+				}
+			}
+		}
+
+		return line
+
+	case model.ServerTypeAnytls:
+		// 节点名 = anytls,服务器地址,端口,密码
+		line := fmt.Sprintf("%s = anytls,%s,%d,\"%s\"",
+			server.Name, server.Host, port, user.UUID)
+
+		if tls, ok := ps["tls"].(map[string]interface{}); ok {
+			if sn, ok := tls["server_name"].(string); ok {
+				line += fmt.Sprintf(",tls-name=%s", sn)
+			}
 		}
 
 		return line

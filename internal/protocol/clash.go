@@ -108,9 +108,18 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 			"uuid":     user.UUID,
 			"alterId":  0,
 			"cipher":   "auto",
+			"udp":      true,
 		}
 		if tls, ok := ps["tls"].(float64); ok && tls > 0 {
 			proxy["tls"] = true
+			if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+				if sn, ok := tlsSettings["server_name"].(string); ok {
+					proxy["servername"] = sn
+				}
+				if insecure, ok := tlsSettings["allow_insecure"].(bool); ok {
+					proxy["skip-cert-verify"] = insecure
+				}
+			}
 		}
 		if network, ok := ps["network"].(string); ok {
 			proxy["network"] = network
@@ -126,6 +135,7 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 			"server": server.Host,
 			"port":   port,
 			"uuid":   user.UUID,
+			"udp":    true,
 		}
 		if flow, ok := ps["flow"].(string); ok && flow != "" {
 			proxy["flow"] = flow
@@ -133,6 +143,7 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 		if tls, ok := ps["tls"].(float64); ok {
 			if tls == 2 { // Reality
 				proxy["tls"] = true
+				proxy["client-fingerprint"] = "chrome"
 				if reality, ok := ps["reality_settings"].(map[string]interface{}); ok {
 					proxy["servername"] = reality["server_name"]
 					proxy["reality-opts"] = map[string]interface{}{
@@ -142,6 +153,15 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 				}
 			} else if tls > 0 {
 				proxy["tls"] = true
+				proxy["client-fingerprint"] = "chrome"
+				if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+					if sn, ok := tlsSettings["server_name"].(string); ok {
+						proxy["servername"] = sn
+					}
+					if insecure, ok := tlsSettings["allow_insecure"].(bool); ok {
+						proxy["skip-cert-verify"] = insecure
+					}
+				}
 			}
 		}
 		if network, ok := ps["network"].(string); ok {
@@ -157,12 +177,22 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 			"server":   server.Host,
 			"port":     port,
 			"password": user.UUID,
+			"udp":      true,
 		}
 		if sn, ok := ps["server_name"].(string); ok && sn != "" {
 			proxy["sni"] = sn
 		}
 		if insecure, ok := ps["allow_insecure"].(bool); ok {
 			proxy["skip-cert-verify"] = insecure
+		}
+		// TLS settings
+		if tlsSettings, ok := ps["tls_settings"].(map[string]interface{}); ok {
+			if sn, ok := tlsSettings["server_name"].(string); ok {
+				proxy["sni"] = sn
+			}
+			if insecure, ok := tlsSettings["allow_insecure"].(bool); ok {
+				proxy["skip-cert-verify"] = insecure
+			}
 		}
 		if network, ok := ps["network"].(string); ok && network != "" {
 			proxy["network"] = network
@@ -192,6 +222,7 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 
 		if version == 2 {
 			proxy["password"] = user.UUID
+			// Hysteria2 obfs
 			if obfs, ok := ps["obfs"].(map[string]interface{}); ok {
 				if open, ok := obfs["open"].(bool); ok && open {
 					proxy["obfs"] = obfs["type"]
@@ -199,7 +230,9 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 				}
 			}
 		} else {
+			// Hysteria1
 			proxy["auth-str"] = user.UUID
+			proxy["protocol"] = "udp"
 			if bw, ok := ps["bandwidth"].(map[string]interface{}); ok {
 				if up, ok := bw["up"].(float64); ok {
 					proxy["up"] = fmt.Sprintf("%d Mbps", int(up))
@@ -208,8 +241,14 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 					proxy["down"] = fmt.Sprintf("%d Mbps", int(down))
 				}
 			}
+			if obfs, ok := ps["obfs"].(map[string]interface{}); ok {
+				if pw, ok := obfs["password"].(string); ok && pw != "" {
+					proxy["obfs"] = pw
+				}
+			}
 		}
 
+		// TLS settings
 		if tls, ok := ps["tls"].(map[string]interface{}); ok {
 			if sn, ok := tls["server_name"].(string); ok {
 				proxy["sni"] = sn
@@ -223,26 +262,83 @@ func buildClashProxy(server service.ServerInfo, user *model.User) map[string]int
 
 	case model.ServerTypeTuic:
 		proxy := map[string]interface{}{
-			"name":               server.Name,
-			"type":               "tuic",
-			"server":             server.Host,
-			"port":               port,
-			"uuid":               user.UUID,
-			"password":           user.UUID,
+			"name":                  server.Name,
+			"type":                  "tuic",
+			"server":                server.Host,
+			"port":                  port,
+			"uuid":                  user.UUID,
+			"password":              user.UUID,
 			"congestion-controller": "cubic",
-			"udp-relay-mode":     "native",
+			"udp-relay-mode":        "native",
+			"reduce-rtt":            true,
+			"alpn":                  []string{"h3"},
 		}
 
 		if cc, ok := ps["congestion_control"].(string); ok {
 			proxy["congestion-controller"] = cc
 		}
+		if urm, ok := ps["udp_relay_mode"].(string); ok {
+			proxy["udp-relay-mode"] = urm
+		}
 		if tls, ok := ps["tls"].(map[string]interface{}); ok {
 			if sn, ok := tls["server_name"].(string); ok {
 				proxy["sni"] = sn
 			}
+			if insecure, ok := tls["allow_insecure"].(bool); ok {
+				proxy["skip-cert-verify"] = insecure
+			}
 		}
 
 		return proxy
+
+	case model.ServerTypeAnytls:
+		proxy := map[string]interface{}{
+			"name":               server.Name,
+			"type":               "anytls",
+			"server":             server.Host,
+			"port":               port,
+			"password":           user.UUID,
+			"client-fingerprint": "chrome",
+			"udp":                true,
+		}
+		if tls, ok := ps["tls"].(map[string]interface{}); ok {
+			if sn, ok := tls["server_name"].(string); ok {
+				proxy["sni"] = sn
+			}
+			if insecure, ok := tls["allow_insecure"].(bool); ok {
+				proxy["skip-cert-verify"] = insecure
+			}
+		}
+		return proxy
+
+	case "shadowtls":
+		// ShadowTLS 在 Clash Meta 中需要配合 SS 使用
+		proxy := map[string]interface{}{
+			"name":               server.Name,
+			"type":               "ss",
+			"server":             server.Host,
+			"port":               port,
+			"cipher":             "2022-blake3-aes-128-gcm",
+			"password":           user.UUID,
+			"client-fingerprint": "chrome",
+			"plugin":             "shadow-tls",
+			"plugin-opts": map[string]interface{}{
+				"host":     "addons.mozilla.org",
+				"password": user.UUID,
+				"version":  3,
+			},
+		}
+		if hs, ok := ps["handshake_server"].(string); ok && hs != "" {
+			proxy["plugin-opts"].(map[string]interface{})["host"] = hs
+		}
+		if method, ok := ps["detour_method"].(string); ok && method != "" {
+			proxy["cipher"] = method
+		}
+		return proxy
+
+	case "naive":
+		// NaiveProxy 在 Clash Meta 中不直接支持，返回 nil
+		return nil
 	}
 
 	return nil

@@ -15,16 +15,18 @@ import (
 
 // HostService 主机服务
 type HostService struct {
-	hostRepo *repository.HostRepository
-	nodeRepo *repository.ServerNodeRepository
-	userRepo *repository.UserRepository
+	hostRepo   *repository.HostRepository
+	nodeRepo   *repository.ServerNodeRepository
+	userRepo   *repository.UserRepository
+	serverRepo *repository.ServerRepository
 }
 
-func NewHostService(hostRepo *repository.HostRepository, nodeRepo *repository.ServerNodeRepository, userRepo *repository.UserRepository) *HostService {
+func NewHostService(hostRepo *repository.HostRepository, nodeRepo *repository.ServerNodeRepository, userRepo *repository.UserRepository, serverRepo *repository.ServerRepository) *HostService {
 	return &HostService{
-		hostRepo: hostRepo,
-		nodeRepo: nodeRepo,
-		userRepo: userRepo,
+		hostRepo:   hostRepo,
+		nodeRepo:   nodeRepo,
+		userRepo:   userRepo,
+		serverRepo: serverRepo,
 	}
 }
 
@@ -163,24 +165,71 @@ func (s *HostService) GenerateSingBoxConfig(hostID int64) (map[string]interface{
 
 // buildInbound 构建 inbound 配置
 func (s *HostService) buildInbound(node *model.ServerNode) map[string]interface{} {
-	tag := node.Type + "-in-" + fmt.Sprintf("%d", node.ID)
+	// 如果绑定了 Server，从 Server 继承配置
+	var protocolSettings model.JSONMap
+	var tlsSettings model.JSONMap
+	var transportSettings model.JSONMap
+	var nodeType string
+	var createdAt int64
+
+	if node.ServerID != nil && *node.ServerID > 0 {
+		// 从绑定的 Server 获取配置
+		server, err := s.serverRepo.GetByID(*node.ServerID)
+		if err == nil && server != nil {
+			nodeType = server.Type
+			protocolSettings = server.ProtocolSettings
+			createdAt = server.CreatedAt
+			// 从 Server 的 ProtocolSettings 中提取 TLS 和 Transport 设置
+			if tls, ok := server.ProtocolSettings["tls_settings"].(map[string]interface{}); ok {
+				tlsSettings = tls
+			}
+			if transport, ok := server.ProtocolSettings["network_settings"].(map[string]interface{}); ok {
+				transportSettings = transport
+			}
+		}
+	}
+
+	// 如果没有绑定或获取失败，使用节点自身的配置
+	if nodeType == "" {
+		nodeType = node.Type
+	}
+	if protocolSettings == nil {
+		protocolSettings = node.ProtocolSettings
+	}
+	if tlsSettings == nil {
+		tlsSettings = node.TLSSettings
+	}
+	if transportSettings == nil {
+		transportSettings = node.TransportSettings
+	}
+	if createdAt == 0 {
+		createdAt = node.CreatedAt
+	}
+
+	tag := nodeType + "-in-" + fmt.Sprintf("%d", node.ID)
 
 	inbound := map[string]interface{}{
-		"type":        node.Type,
+		"type":        nodeType,
 		"tag":         tag,
 		"listen":      "::",
 		"listen_port": node.ListenPort,
 	}
 
 	// 合并协议设置
-	for k, v := range node.ProtocolSettings {
+	for k, v := range protocolSettings {
+		// 跳过 tls_settings 和 network_settings，它们单独处理
+		if k == "tls_settings" || k == "network_settings" || k == "tls" {
+			continue
+		}
 		inbound[k] = v
 	}
 
 	// Shadowsocks 2022 需要服务器密钥
-	if node.Type == model.NodeTypeShadowsocks {
+	if nodeType == model.NodeTypeShadowsocks {
 		cipher := ""
-		if c, ok := node.ProtocolSettings["method"].(string); ok {
+		if c, ok := protocolSettings["method"].(string); ok {
+			cipher = c
+		} else if c, ok := protocolSettings["cipher"].(string); ok {
 			cipher = c
 		}
 		// 为 SS2022 生成服务器密钥
@@ -189,22 +238,23 @@ func (s *HostService) buildInbound(node *model.ServerNode) map[string]interface{
 			if cipher == "2022-blake3-aes-256-gcm" || cipher == "2022-blake3-chacha20-poly1305" {
 				keySize = 32
 			}
-			inbound["password"] = utils.GetServerKey(node.CreatedAt, keySize)
+			inbound["method"] = cipher
+			inbound["password"] = utils.GetServerKey(createdAt, keySize)
 		}
 	}
 
 	// TLS 设置
-	if len(node.TLSSettings) > 0 {
-		inbound["tls"] = node.TLSSettings
+	if len(tlsSettings) > 0 {
+		inbound["tls"] = tlsSettings
 	}
 
 	// Transport 设置
-	if len(node.TransportSettings) > 0 {
-		inbound["transport"] = node.TransportSettings
+	if len(transportSettings) > 0 {
+		inbound["transport"] = transportSettings
 	}
 
 	// 用户列表初始化为空
-	switch node.Type {
+	switch nodeType {
 	case model.NodeTypeVMess, model.NodeTypeVLESS, model.NodeTypeTrojan, model.NodeTypeHysteria2, model.NodeTypeTUIC:
 		inbound["users"] = []interface{}{}
 	case model.NodeTypeShadowsocks:
@@ -264,18 +314,46 @@ func (s *HostService) buildShadowTLSInbound(inbound map[string]interface{}, node
 
 // GetUsersForNode 获取节点可用的用户列表
 func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]interface{}, error) {
-	groupIDs := node.GetGroupIDsAsInt64()
-	
+	// 如果绑定了 Server，从 Server 获取用户组配置
+	var groupIDs []int64
+	var nodeType string
+	var protocolSettings model.JSONMap
+	var createdAt int64
+
+	if node.ServerID != nil && *node.ServerID > 0 {
+		server, err := s.serverRepo.GetByID(*node.ServerID)
+		if err == nil && server != nil {
+			groupIDs = server.GetGroupIDsAsInt64()
+			nodeType = server.Type
+			protocolSettings = server.ProtocolSettings
+			createdAt = server.CreatedAt
+		}
+	}
+
+	// 如果没有绑定或获取失败，使用节点自身的配置
+	if len(groupIDs) == 0 {
+		groupIDs = node.GetGroupIDsAsInt64()
+	}
+	if nodeType == "" {
+		nodeType = node.Type
+	}
+	if protocolSettings == nil {
+		protocolSettings = node.ProtocolSettings
+	}
+	if createdAt == 0 {
+		createdAt = node.CreatedAt
+	}
+
 	var users []model.User
 	var err error
-	
+
 	if len(groupIDs) == 0 {
 		// 如果没有设置组，获取所有可用用户
 		users, err = s.userRepo.GetAllAvailableUsers()
 	} else {
 		users, err = s.userRepo.GetAvailableUsers(groupIDs)
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -287,9 +365,9 @@ func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]inte
 		}
 
 		// 根据协议类型设置密码字段
-		switch node.Type {
+		switch nodeType {
 		case model.NodeTypeShadowsocks:
-			userConfig["password"] = s.generateSS2022Password(node, &user)
+			userConfig["password"] = s.generateSS2022PasswordWithConfig(protocolSettings, createdAt, &user)
 		case model.NodeTypeVMess, model.NodeTypeVLESS:
 			userConfig["uuid"] = user.UUID
 		case model.NodeTypeTrojan, model.NodeTypeHysteria2, model.NodeTypeTUIC, model.NodeTypeAnyTLS:
@@ -309,18 +387,25 @@ func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]inte
 
 // generateSS2022Password 生成 SS2022 密码
 func (s *HostService) generateSS2022Password(node *model.ServerNode, user *model.User) string {
+	return s.generateSS2022PasswordWithConfig(node.ProtocolSettings, node.CreatedAt, user)
+}
+
+// generateSS2022PasswordWithConfig 根据配置生成 SS2022 密码
+func (s *HostService) generateSS2022PasswordWithConfig(ps model.JSONMap, createdAt int64, user *model.User) string {
 	cipher := ""
-	if c, ok := node.ProtocolSettings["method"].(string); ok {
+	if c, ok := ps["method"].(string); ok {
+		cipher = c
+	} else if c, ok := ps["cipher"].(string); ok {
 		cipher = c
 	}
 
 	switch cipher {
 	case "2022-blake3-aes-128-gcm":
-		serverKey := utils.GetServerKey(node.CreatedAt, 16)
+		serverKey := utils.GetServerKey(createdAt, 16)
 		userKey := utils.UUIDToBase64(user.UUID, 16)
 		return serverKey + ":" + userKey
 	case "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305":
-		serverKey := utils.GetServerKey(node.CreatedAt, 32)
+		serverKey := utils.GetServerKey(createdAt, 32)
 		userKey := utils.UUIDToBase64(user.UUID, 32)
 		return serverKey + ":" + userKey
 	default:

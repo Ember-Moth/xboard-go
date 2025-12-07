@@ -26,20 +26,21 @@ const (
 
 // ServerNode 节点模型 - 主机上运行的服务
 type ServerNode struct {
-	ID               int64   `gorm:"primaryKey;column:id" json:"id"`
-	HostID           int64   `gorm:"column:host_id;index" json:"host_id"`
-	Name             string  `gorm:"column:name" json:"name"`
-	Type             string  `gorm:"column:type" json:"type"` // shadowsocks, vless, trojan 等
-	ListenPort       int     `gorm:"column:listen_port" json:"listen_port"`
-	GroupIDs         JSONArray `gorm:"column:group_ids;type:json" json:"group_ids"`
-	Rate             float64 `gorm:"column:rate;default:1" json:"rate"`
-	Show             bool    `gorm:"column:show;default:true" json:"show"`
-	Sort             *int    `gorm:"column:sort" json:"sort"`
-	ProtocolSettings JSONMap `gorm:"column:protocol_settings;type:json" json:"protocol_settings"`
-	TLSSettings      JSONMap `gorm:"column:tls_settings;type:json" json:"tls_settings"`
-	TransportSettings JSONMap `gorm:"column:transport_settings;type:json" json:"transport_settings"`
-	CreatedAt        int64   `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt        int64   `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID                int64     `gorm:"primaryKey;column:id" json:"id"`
+	HostID            int64     `gorm:"column:host_id;index" json:"host_id"`
+	ServerID          *int64    `gorm:"column:server_id;index" json:"server_id"` // 绑定的 Server ID，如果设置则继承配置
+	Name              string    `gorm:"column:name" json:"name"`
+	Type              string    `gorm:"column:type" json:"type"` // shadowsocks, vless, trojan 等
+	ListenPort        int       `gorm:"column:listen_port" json:"listen_port"`
+	GroupIDs          JSONArray `gorm:"column:group_ids;type:json" json:"group_ids"`
+	Rate              float64   `gorm:"column:rate;default:1" json:"rate"`
+	Show              bool      `gorm:"column:show;default:true" json:"show"`
+	Sort              *int      `gorm:"column:sort" json:"sort"`
+	ProtocolSettings  JSONMap   `gorm:"column:protocol_settings;type:json" json:"protocol_settings"`
+	TLSSettings       JSONMap   `gorm:"column:tls_settings;type:json" json:"tls_settings"`
+	TransportSettings JSONMap   `gorm:"column:transport_settings;type:json" json:"transport_settings"`
+	CreatedAt         int64     `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt         int64     `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (ServerNode) TableName() string {

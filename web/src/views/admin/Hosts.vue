@@ -15,6 +15,7 @@ interface Host {
 interface ServerNode {
   id: number
   host_id: number
+  server_id?: number | null  // 绑定的 Server ID
   name: string
   type: string
   listen_port: number
@@ -25,8 +26,15 @@ interface ServerNode {
   tls_settings?: Record<string, any>
 }
 
+interface Server {
+  id: number
+  name: string
+  type: string
+}
+
 const hosts = ref<Host[]>([])
 const nodes = ref<ServerNode[]>([])
+const servers = ref<Server[]>([])  // 可绑定的 Server 列表
 const selectedHost = ref<Host | null>(null)
 const loading = ref(false)
 
@@ -61,6 +69,16 @@ const fetchHosts = async () => {
     hosts.value = res.data.data || []
   } finally {
     loading.value = false
+  }
+}
+
+// 获取可绑定的 Server 列表
+const fetchServers = async () => {
+  try {
+    const res = await api.get('/api/v2/admin/servers')
+    servers.value = res.data.data || []
+  } catch (e) {
+    console.error(e)
   }
 }
 
@@ -114,6 +132,9 @@ const showConfig = async (host: Host) => {
 
 // 节点操作
 const openNodeModal = async (node?: ServerNode) => {
+  // 先获取 Server 列表
+  await fetchServers()
+  
   if (node) {
     editingNode.value = { ...node }
   } else {
@@ -121,6 +142,7 @@ const openNodeModal = async (node?: ServerNode) => {
     const res = await api.get('/api/v2/admin/node/default', { params: { type: 'shadowsocks' } })
     editingNode.value = {
       host_id: selectedHost.value!.id,
+      server_id: null,  // 默认不绑定
       type: 'shadowsocks',
       group_ids: [1],
       rate: 1,
@@ -129,6 +151,17 @@ const openNodeModal = async (node?: ServerNode) => {
     }
   }
   showNodeModal.value = true
+}
+
+// 当选择绑定的 Server 时，自动填充配置
+const onServerBind = () => {
+  if (editingNode.value.server_id) {
+    const server = servers.value.find(s => s.id === editingNode.value.server_id)
+    if (server) {
+      editingNode.value.type = server.type
+      editingNode.value.name = server.name + ' (入口)'
+    }
+  }
 }
 
 const onTypeChange = async () => {
@@ -252,11 +285,19 @@ onMounted(fetchHosts)
           <div v-else class="divide-y divide-gray-100">
             <div v-for="node in nodes" :key="node.id" class="p-4 flex items-center justify-between">
               <div>
-                <div class="font-medium">{{ node.name }}</div>
+                <div class="font-medium flex items-center gap-2">
+                  {{ node.name }}
+                  <span v-if="node.server_id" class="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-xs">
+                    🔗 已绑定
+                  </span>
+                </div>
                 <div class="text-sm text-gray-500">
                   {{ node.type }} · 端口 {{ node.listen_port }} · {{ node.rate }}x倍率
                 </div>
-                <div class="text-xs text-gray-400">用户组: {{ node.group_ids?.join(', ') || '无' }}</div>
+                <div class="text-xs text-gray-400">
+                  <span v-if="node.server_id">绑定节点 ID: {{ node.server_id }}</span>
+                  <span v-else>用户组: {{ node.group_ids?.join(', ') || '无' }}</span>
+                </div>
               </div>
               <div class="flex items-center gap-3">
                 <span :class="node.show ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'" 
@@ -339,6 +380,16 @@ onMounted(fetchHosts)
           <h3 class="text-lg font-bold mb-4">{{ editingNode.id ? '编辑节点' : '添加节点' }}</h3>
           
           <div class="space-y-4">
+            <!-- 绑定 Server（推荐） -->
+            <div class="bg-blue-50 rounded-xl p-4 mb-4">
+              <label class="block text-sm font-medium text-blue-700 mb-2">🔗 绑定节点（推荐）</label>
+              <select v-model="editingNode.server_id" @change="onServerBind" class="w-full px-4 py-2 border border-blue-200 rounded-xl bg-white">
+                <option :value="null">不绑定，手动配置</option>
+                <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.type }})</option>
+              </select>
+              <p class="text-xs text-blue-600 mt-2">绑定后将自动继承节点的协议配置、密码等，只需设置入口端口</p>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">节点名称</label>
@@ -346,7 +397,7 @@ onMounted(fetchHosts)
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">协议类型</label>
-                <select v-model="editingNode.type" @change="onTypeChange" class="w-full px-4 py-2 border border-gray-200 rounded-xl">
+                <select v-model="editingNode.type" @change="onTypeChange" :disabled="!!editingNode.server_id" class="w-full px-4 py-2 border border-gray-200 rounded-xl disabled:bg-gray-100">
                   <option v-for="t in nodeTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
                 </select>
               </div>

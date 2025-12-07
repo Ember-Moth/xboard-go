@@ -52,6 +52,6 @@ func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *confi
 		Knowledge: NewKnowledgeService(repos.Knowledge),
 		Stats:     NewStatsService(repos.User, repos.Order, repos.Server, repos.Stat, repos.Ticket),
 		Scheduler: NewSchedulerService(repos.User, repos.Order, repos.Stat, mailService, telegramService),
-		Host:      NewHostService(repos.Host, repos.ServerNode, repos.User),
+		Host:      NewHostService(repos.Host, repos.ServerNode, repos.User, repos.Server),
 	}
 }

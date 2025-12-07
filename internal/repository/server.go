@@ -120,7 +120,7 @@ func (r *ServerRepository) UnbindFromHost(hostID int64) error {
 // GetUnboundServers 获取未绑定主机的服务器（公共服务器）
 func (r *ServerRepository) GetUnboundServers() ([]model.Server, error) {
 	var servers []model.Server
-	err := r.db.Where("host_id IS NULL").Where("show = ?", true).Order("sort ASC").Find(&servers).Error
+	err := r.db.Where("host_id IS NULL").Where("`show` = ?", true).Order("sort ASC").Find(&servers).Error
 	return servers, err
 }
 

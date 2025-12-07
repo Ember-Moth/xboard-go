@@ -67,11 +67,11 @@ func NewAgent() *Agent {
 }
 
 // getNodeUsers 获取节点用户（支持增量同步）
-func (a *Agent) getNodeUsers(nodeID int64) ([]map[string]interface{}, bool, error) {
-	version := a.userVersions[nodeID]
+// nodeType: "server" 或 "node"
+func (a *Agent) getNodeUsers(nodeID int64, nodeType string) ([]map[string]interface{}, bool, error) {
 	hash := a.userHashes[nodeID]
 
-	url := fmt.Sprintf("/users?node_id=%d&version=%d&hash=%s", nodeID, version, hash)
+	url := fmt.Sprintf("/users?node_id=%d&type=%s&hash=%s", nodeID, nodeType, hash)
 	result, err := a.apiRequest("GET", url, nil)
 	if err != nil {
 		return nil, false, err
@@ -87,10 +87,7 @@ func (a *Agent) getNodeUsers(nodeID int64) ([]map[string]interface{}, bool, erro
 		return nil, false, nil
 	}
 
-	// 更新版本和哈希
-	if v, ok := data["version"].(float64); ok {
-		a.userVersions[nodeID] = int64(v)
-	}
+	// 更新哈希
 	if h, ok := data["hash"].(string); ok {
 		a.userHashes[nodeID] = h
 	}
@@ -194,19 +191,11 @@ func (a *Agent) updateConfig(config *AgentConfig) (bool, error) {
 				// 找到对应的节点配置
 				for _, node := range config.Nodes {
 					if node.Tag == tag {
-						// 尝试增量获取用户
-						users, changed, err := a.getNodeUsers(node.ID)
-						if err != nil {
-							fmt.Printf("⚠ 获取节点 %d 用户失败: %v\n", node.ID, err)
-							// 使用配置中的用户
-							if len(node.Users) > 0 {
-								ib["users"] = node.Users
-							}
-						} else if changed && len(users) > 0 {
-							ib["users"] = users
-							hasUserChange = true
-						} else if len(node.Users) > 0 {
+						// 直接使用配置中的用户（已经是正确格式）
+						// 不再单独调用用户接口，因为 GetAgentConfig 已经返回了正确格式的用户
+						if len(node.Users) > 0 {
 							ib["users"] = node.Users
+							hasUserChange = true
 						}
 						inbounds[i] = ib
 						break

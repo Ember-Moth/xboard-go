@@ -221,9 +221,17 @@ func ClientSubscribe(services *service.Services) gin.HandlerFunc {
 		ua := c.GetHeader("User-Agent")
 		format := c.Query("format")
 
+		// 获取站点名称
+		siteName, _ := services.Setting.Get("app_name")
+		if siteName == "" {
+			siteName = "XBoard"
+		}
+
 		// 设置订阅信息头
 		c.Header("subscription-userinfo", formatSubscriptionInfo(user))
 		c.Header("profile-update-interval", "24")
+		c.Header("profile-title", siteName)
+		c.Header("content-disposition", "attachment; filename="+siteName)
 
 		switch {
 		case format == "singbox" || containsAny(ua, "sing-box", "hiddify", "sfm"):

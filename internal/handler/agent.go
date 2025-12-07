@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"crypto/md5"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -81,6 +84,7 @@ func AgentGetConfig(services *service.Services) gin.HandlerFunc {
 }
 
 // AgentGetUsers 获取节点用户（支持增量同步）
+// 注意：此接口返回的是 sing-box 格式的用户配置，包含 name 和 password
 func AgentGetUsers(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		host := getHostFromContext(c)
@@ -90,7 +94,7 @@ func AgentGetUsers(services *service.Services) gin.HandlerFunc {
 		}
 
 		nodeID, _ := strconv.ParseInt(c.Query("node_id"), 10, 64)
-		lastVersion, _ := strconv.ParseInt(c.Query("version"), 10, 64)
+		nodeType := c.Query("type") // server 或 node
 		lastHash := c.Query("hash")
 
 		if nodeID == 0 {
@@ -98,32 +102,55 @@ func AgentGetUsers(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		// 获取节点
-		node, err := services.Host.GetNodeByID(nodeID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
-			return
+		var users []map[string]interface{}
+		var err error
+
+		// 根据类型获取用户
+		if nodeType == "server" {
+			// 从 Server 获取用户
+			server, err := services.Server.FindServer(nodeID, "")
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "server not found"})
+				return
+			}
+			// 验证 Server 属于该主机
+			if server.HostID == nil || *server.HostID != host.ID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "server not belong to this host"})
+				return
+			}
+			users, err = services.Host.GetUsersForServer(server)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			// 从 ServerNode 获取用户
+			node, err := services.Host.GetNodeByID(nodeID)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
+				return
+			}
+			// 验证节点属于该主机
+			if node.HostID != host.ID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "node not belong to this host"})
+				return
+			}
+			users, err = services.Host.GetUsersForNode(node)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 
-		// 验证节点属于该主机
-		if node.HostID != host.ID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "node not belong to this host"})
-			return
-		}
-
-		// 获取用户列表（带缓存和增量同步）
-		result, err := services.User.GetNodeUsersWithCache(nodeID, node.GetGroupIDsAsInt64(), lastVersion)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+		// 计算哈希
+		usersJSON, _ := json.Marshal(users)
+		currentHash := fmt.Sprintf("%x", md5.Sum(usersJSON))
 
 		// 如果哈希相同，返回无变化
-		if lastHash != "" && result.Hash == lastHash {
+		if lastHash != "" && currentHash == lastHash {
 			c.JSON(http.StatusOK, gin.H{
 				"data": gin.H{
-					"version":    result.Version,
-					"hash":       result.Hash,
+					"hash":       currentHash,
 					"has_change": false,
 				},
 			})
@@ -132,10 +159,9 @@ func AgentGetUsers(services *service.Services) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"data": gin.H{
-				"version":    result.Version,
-				"hash":       result.Hash,
-				"has_change": result.HasChange,
-				"users":      result.Users,
+				"hash":       currentHash,
+				"has_change": true,
+				"users":      users,
 			},
 		})
 	}

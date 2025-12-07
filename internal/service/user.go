@@ -231,7 +231,7 @@ func (s *UserService) ChangePassword(userID int64, oldPassword, newPassword stri
 
 // GetUserInfo 获取用户信息
 func (s *UserService) GetUserInfo(user *model.User) map[string]interface{} {
-	return map[string]interface{}{
+	info := map[string]interface{}{
 		"id":              user.ID,
 		"email":           user.Email,
 		"uuid":            user.UUID,
@@ -247,6 +247,16 @@ func (s *UserService) GetUserInfo(user *model.User) map[string]interface{} {
 		"is_staff":        user.IsStaff,
 		"created_at":      user.CreatedAt,
 	}
+
+	// 添加套餐信息
+	if user.Plan != nil {
+		info["plan"] = map[string]interface{}{
+			"id":   user.Plan.ID,
+			"name": user.Plan.Name,
+		}
+	}
+
+	return info
 }
 
 

@@ -29,7 +29,7 @@ func (r *UserRepository) Delete(id int64) error {
 
 func (r *UserRepository) FindByID(id int64) (*model.User, error) {
 	var user model.User
-	err := r.db.First(&user, id).Error
+	err := r.db.Preload("Plan").First(&user, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (r *UserRepository) FindByEmail(email string) (*model.User, error) {
 
 func (r *UserRepository) FindByToken(token string) (*model.User, error) {
 	var user model.User
-	err := r.db.Where("token = ?", token).First(&user).Error
+	err := r.db.Preload("Plan").Where("token = ?", token).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

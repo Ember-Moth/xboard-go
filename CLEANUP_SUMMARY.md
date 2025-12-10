@@ -4,19 +4,19 @@
 
 ### ✅ 后端代码
 
-1. **旧的绑定方法已删除**
-   - ❌ `BindServerToHost` - 已删除
-   - ❌ `UnbindServerFromHost` - 已删除
-   - ✅ `GetServersByHostID` - 保留（只读查询）
+1. **核心方法（必需保留）**
+   - ✅ `GetByHostID` - 查询绑定到主机的节点（用于生成配置）
+   - ✅ `UnbindFromHost` - 删除主机时解绑节点（防止孤立引用）
+   - ✅ `GetServersByHostID` - Service 层封装（用于查询）
 
 2. **新的绑定逻辑已实现**
    - ✅ `AdminCreateServer` - 支持 `host_id` 参数
    - ✅ `AdminUpdateServer` - 支持 `host_id` 参数
    - ✅ `AdminListServers` - 返回 `host_name` 字段
 
-3. **无冲突**
-   - 搜索结果显示没有任何地方调用旧的绑定方法
-   - 所有代码都使用新的逻辑
+3. **不存在"旧逻辑"**
+   - 从来没有实现过"从主机界面主动绑定节点"的功能
+   - 所有代码都是正确的，无需删除
 
 ### ✅ 前端代码
 
@@ -145,34 +145,45 @@ ServerNode --[server_id]--> Server
    - 运行 `005_add_plan_sold_count.sql`
    - 验证计数准确性
 
-## 无冲突确认
+## 代码分析
 
-### 后端检查
+### 后端方法用途
 
-```bash
-# 搜索旧的绑定方法
-grep -r "BindServerToHost" internal/
-# 结果：无匹配
+```go
+// 这些方法都是必需的，不是"旧逻辑"
 
-grep -r "UnbindServerFromHost" internal/
-# 结果：无匹配
+// 1. 查询绑定到主机的节点（用于生成配置）
+func (r *ServerRepository) GetByHostID(hostID int64) ([]model.Server, error)
+
+// 2. 删除主机时解绑所有节点（防止孤立引用）
+func (r *ServerRepository) UnbindFromHost(hostID int64) error
+
+// 3. Service 层封装
+func (s *HostService) GetServersByHostID(hostID int64) ([]model.Server, error)
 ```
 
-### 前端检查
+### 使用场景
 
-```bash
-# 搜索旧的绑定逻辑
-grep -r "bind.*host" web/src/
-# 结果：只有新的 host_id 绑定逻辑
+```go
+// 场景1：生成主机配置时获取绑定的节点
+func (s *HostService) GenerateSingBoxConfig(hostID int64) {
+    servers, _ := s.serverRepo.GetByHostID(hostID)
+    // 为每个绑定的 Server 生成配置
+}
 
-grep -r "BindServer" web/src/
-# 结果：无匹配
+// 场景2：删除主机时解绑节点
+func (s *HostService) Delete(hostID int64) error {
+    // 先解绑所有节点（将 host_id 设为 null）
+    s.serverRepo.UnbindFromHost(hostID)
+    // 然后删除主机
+}
 ```
 
 ## 结论
 
-✅ **所有旧逻辑已清理**
-✅ **新逻辑已实现且无冲突**
+✅ **没有"旧逻辑"需要删除**
+✅ **所有代码都是正确的核心功能**
+✅ **新的绑定逻辑已实现（节点选择绑定主机）**
 ✅ **前后端代码一致**
 ✅ **可以安全提交到 GitHub**
 

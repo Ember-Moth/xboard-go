@@ -64,11 +64,14 @@ cp configs/config.example.yaml configs/config.yaml
 ### 2. 数据库迁移
 
 ```bash
-# 执行数据库迁移
+# 全新安装：执行数据库迁移
 bash migrate.sh up
 
 # 或使用自动迁移（开发环境）
 bash migrate.sh auto
+
+# 升级现有数据库（MySQL，保留所有数据）
+bash upgrade-mysql.sh
 
 # 查看迁移指南
 cat MIGRATION_GUIDE.md

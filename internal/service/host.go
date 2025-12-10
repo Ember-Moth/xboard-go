@@ -105,19 +105,9 @@ func (s *HostService) Delete(hostID int64) error {
 	return s.hostRepo.Delete(hostID)
 }
 
-// GetServersByHostID 获取绑定到主机的所有节点
+// GetServersByHostID 获取绑定到主机的所有节点（只读，用于查询）
 func (s *HostService) GetServersByHostID(hostID int64) ([]model.Server, error) {
 	return s.serverRepo.GetByHostID(hostID)
-}
-
-// BindServerToHost 绑定节点到主机
-func (s *HostService) BindServerToHost(serverID int64, hostID int64) error {
-	return s.serverRepo.UpdateHostID(serverID, &hostID)
-}
-
-// UnbindServerFromHost 解除节点与主机的绑定
-func (s *HostService) UnbindServerFromHost(serverID int64) error {
-	return s.serverRepo.UpdateHostID(serverID, nil)
 }
 
 // CreateNode 创建节点

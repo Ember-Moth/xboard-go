@@ -97,7 +97,20 @@ func (s *PlanService) GetPlanInfo(plan *model.Plan) map[string]interface{} {
 		"prices":               prices,
 		"reset_traffic_method": plan.ResetTrafficMethod,
 		"capacity_limit":       plan.CapacityLimit,
+		"sold_count":           plan.SoldCount,
+		"remaining_count":      plan.GetRemainingCount(),
+		"can_purchase":         plan.CanPurchase(),
 	}
+}
+
+// IncrementSoldCount 增加已售数量
+func (s *PlanService) IncrementSoldCount(planID int64) error {
+	return s.planRepo.IncrementSoldCount(planID)
+}
+
+// DecrementSoldCount 减少已售数量
+func (s *PlanService) DecrementSoldCount(planID int64) error {
+	return s.planRepo.DecrementSoldCount(planID)
 }
 
 var ErrPlanInUse = &PlanError{Message: "plan is in use by users"}

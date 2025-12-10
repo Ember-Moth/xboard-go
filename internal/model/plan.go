@@ -4,10 +4,10 @@ package model
 type Plan struct {
 	ID                 int64     `gorm:"primaryKey;column:id" json:"id"`
 	GroupID            *int64    `gorm:"column:group_id" json:"group_id"`
-	TransferEnable     int64     `gorm:"column:transfer_enable" json:"transfer_enable"`
+	TransferEnable     int64     `gorm:"column:transfer_enable" json:"transfer_enable"`       // 流量配额（字节）
 	Name               string    `gorm:"column:name" json:"name"`
-	SpeedLimit         *int      `gorm:"column:speed_limit" json:"speed_limit"`
-	DeviceLimit        *int      `gorm:"column:device_limit" json:"device_limit"`
+	SpeedLimit         *int      `gorm:"column:speed_limit" json:"speed_limit"`               // 速度限制（Mbps）
+	DeviceLimit        *int      `gorm:"column:device_limit" json:"device_limit"`             // 设备数量限制
 	Show               bool      `gorm:"column:show;default:false" json:"show"`
 	Sell               bool      `gorm:"column:sell;default:true" json:"sell"`
 	Renew              bool      `gorm:"column:renew;default:true" json:"renew"`
@@ -22,8 +22,9 @@ type Plan struct {
 	OnetimePrice       *int64    `gorm:"column:onetime_price" json:"onetime_price"`
 	ResetPrice         *int64    `gorm:"column:reset_price" json:"reset_price"`
 	ResetTrafficMethod *int      `gorm:"column:reset_traffic_method" json:"reset_traffic_method"`
-	CapacityLimit      *int      `gorm:"column:capacity_limit" json:"capacity_limit"`
-	UpgradeGroupID     *int64    `gorm:"column:upgrade_group_id" json:"upgrade_group_id"` // 购买后升级到的用户组ID
+	CapacityLimit      *int      `gorm:"column:capacity_limit" json:"capacity_limit"`         // 最大可售数量（null或0=不限制）
+	SoldCount          int       `gorm:"column:sold_count;default:0" json:"sold_count"`       // 已售出数量
+	UpgradeGroupID     *int64    `gorm:"column:upgrade_group_id" json:"upgrade_group_id"`     // 购买后升级到的用户组ID
 	CreatedAt          int64     `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt          int64     `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
@@ -113,4 +114,29 @@ func (p *Plan) GetPriceByPeriod(period string) int64 {
 		}
 	}
 	return 0
+}
+
+// CanPurchase 检查套餐是否可以购买
+func (p *Plan) CanPurchase() bool {
+	// 如果没有设置限制，可以购买
+	if p.CapacityLimit == nil || *p.CapacityLimit <= 0 {
+		return true
+	}
+	
+	// 检查是否还有剩余
+	return p.SoldCount < *p.CapacityLimit
+}
+
+// GetRemainingCount 获取剩余可售数量
+func (p *Plan) GetRemainingCount() int {
+	// 如果没有设置限制，返回 -1 表示不限制
+	if p.CapacityLimit == nil || *p.CapacityLimit <= 0 {
+		return -1
+	}
+	
+	remaining := *p.CapacityLimit - p.SoldCount
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
 }

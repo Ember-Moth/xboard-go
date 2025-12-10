@@ -124,7 +124,32 @@ func AdminListServers(services *service.Services) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"data": servers})
+
+		// 获取所有主机信息，用于填充主机名称
+		hosts, _ := services.Host.GetAll()
+		hostMap := make(map[int64]string)
+		for _, host := range hosts {
+			hostMap[host.ID] = host.Name
+		}
+
+		// 构建响应，添加主机名称
+		type ServerResponse struct {
+			*model.Server
+			HostName string `json:"host_name,omitempty"`
+		}
+
+		response := make([]ServerResponse, len(servers))
+		for i, server := range servers {
+			resp := ServerResponse{Server: &servers[i]}
+			if server.HostID != nil {
+				if hostName, ok := hostMap[*server.HostID]; ok {
+					resp.HostName = hostName
+				}
+			}
+			response[i] = resp
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": response})
 	}
 }
 
@@ -136,6 +161,7 @@ func AdminCreateServer(services *service.Services) gin.HandlerFunc {
 			Type             string                 `json:"type" binding:"required"`
 			Host             string                 `json:"host" binding:"required"`
 			Port             string                 `json:"port" binding:"required"`
+			HostID           *int64                 `json:"host_id"` // 绑定的主机ID
 			Rate             float64                `json:"rate"`
 			Show             bool                   `json:"show"`
 			Tags             []string               `json:"tags"`
@@ -146,6 +172,14 @@ func AdminCreateServer(services *service.Services) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// 如果设置了 host_id，验证主机是否存在
+		if req.HostID != nil {
+			if _, err := services.Host.GetByID(*req.HostID); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "host not found"})
+				return
+			}
 		}
 
 		// 转换 Tags 为 JSONArray
@@ -165,6 +199,7 @@ func AdminCreateServer(services *service.Services) gin.HandlerFunc {
 			Type:             req.Type,
 			Host:             req.Host,
 			Port:             req.Port,
+			HostID:           req.HostID,
 			Rate:             req.Rate,
 			Show:             req.Show,
 			Tags:             tags,
@@ -203,6 +238,7 @@ func AdminUpdateServer(services *service.Services) gin.HandlerFunc {
 			Type             string                 `json:"type"`
 			Host             string                 `json:"host"`
 			Port             string                 `json:"port"`
+			HostID           *int64                 `json:"host_id"` // 绑定的主机ID
 			Rate             float64                `json:"rate"`
 			Show             bool                   `json:"show"`
 			Tags             []string               `json:"tags"`
@@ -213,6 +249,14 @@ func AdminUpdateServer(services *service.Services) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// 如果设置了 host_id，验证主机是否存在
+		if req.HostID != nil {
+			if _, err := services.Host.GetByID(*req.HostID); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "host not found"})
+				return
+			}
 		}
 
 		// 转换 Tags 为 JSONArray
@@ -231,6 +275,7 @@ func AdminUpdateServer(services *service.Services) gin.HandlerFunc {
 		server.Type = req.Type
 		server.Host = req.Host
 		server.Port = req.Port
+		server.HostID = req.HostID
 		server.Rate = req.Rate
 		server.Show = req.Show
 		server.Tags = tags

@@ -23,6 +23,7 @@ type Plan struct {
 	ResetPrice         *int64    `gorm:"column:reset_price" json:"reset_price"`
 	ResetTrafficMethod *int      `gorm:"column:reset_traffic_method" json:"reset_traffic_method"`
 	CapacityLimit      *int      `gorm:"column:capacity_limit" json:"capacity_limit"`
+	UpgradeGroupID     *int64    `gorm:"column:upgrade_group_id" json:"upgrade_group_id"` // 购买后升级到的用户组ID
 	CreatedAt          int64     `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt          int64     `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }

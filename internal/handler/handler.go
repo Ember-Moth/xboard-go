@@ -246,6 +246,33 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			admin.GET("/traffic/servers", AdminServerTrafficOverview(services))
 			admin.GET("/traffic/daily", AdminDailyTrafficStats(services))
 			admin.GET("/traffic/user/:id", AdminUserTrafficDetail(services))
+
+			// User Group management (用户组管理 - 新架构)
+			admin.GET("/user-groups", AdminListUserGroups(services))
+			admin.GET("/user-group/:id", AdminGetUserGroup(services))
+			admin.POST("/user-group", AdminCreateUserGroup(services))
+			admin.PUT("/user-group/:id", AdminUpdateUserGroup(services))
+			admin.DELETE("/user-group/:id", AdminDeleteUserGroup(services))
+			
+			// User Group - Server management (用户组节点管理)
+			admin.POST("/user-group/:id/servers", AdminSetUserGroupServers(services))
+			admin.POST("/user-group/:id/server", AdminAddServerToUserGroup(services))
+			admin.DELETE("/user-group/:id/server/:server_id", AdminRemoveServerFromUserGroup(services))
+			
+			// User Group - Plan management (用户组套餐管理)
+			admin.POST("/user-group/:id/plans", AdminSetUserGroupPlans(services))
+			admin.POST("/user-group/:id/plan", AdminAddPlanToUserGroup(services))
+			admin.DELETE("/user-group/:id/plan/:plan_id", AdminRemovePlanFromUserGroup(services))
+
+			// Traffic management (流量管理 - 新功能)
+			admin.GET("/traffic/stats", AdminGetTrafficStats(services))
+			admin.GET("/traffic/warnings", AdminGetTrafficWarnings(services))
+			admin.POST("/traffic/reset/:id", AdminResetTraffic(services))
+			admin.POST("/traffic/reset-all", AdminResetAllTraffic(services))
+			admin.GET("/traffic/detail/:id", AdminGetUserTrafficDetail(services))
+			admin.POST("/traffic/warning/:id", AdminSendTrafficWarning(services))
+			admin.POST("/traffic/warnings/send", AdminBatchSendTrafficWarnings(services))
+			admin.POST("/traffic/autoban", AdminAutobanOverTrafficUsers(services))
 		}
 	}
 }

@@ -63,21 +63,32 @@ func (r *UserRepository) FindByUUID(uuid string) (*model.User, error) {
 	return &user, nil
 }
 
-// GetAvailableUsers 获取指定权限组的可用用户
+// GetAvailableUsers 获取指定权限组的可用用户（带流控检查）
 func (r *UserRepository) GetAvailableUsers(groupIDs []int64) ([]model.User, error) {
 	var users []model.User
 	now := getCurrentTimestamp()
-	err := r.db.
-		Where("group_id IN ?", groupIDs).
-		Where("banned = ?", false).
-		Where("(transfer_enable = 0 OR u + d < transfer_enable)"). // 流量为0表示无限制
-		Where("(expired_at IS NULL OR expired_at = 0 OR expired_at >= ?)", now).
-		Select("id", "uuid", "speed_limit", "device_limit").
-		Find(&users).Error
+	
+	query := r.db.Where("banned = ?", false)
+	
+	// 如果指定了用户组，则过滤
+	if len(groupIDs) > 0 {
+		query = query.Where("group_id IN ?", groupIDs)
+	}
+	
+	// 流控检查：
+	// 1. transfer_enable = 0 表示无限流量
+	// 2. u + d < transfer_enable 表示还有剩余流量
+	query = query.Where("(transfer_enable = 0 OR u + d < transfer_enable)")
+	
+	// 过期检查
+	query = query.Where("(expired_at IS NULL OR expired_at = 0 OR expired_at >= ?)", now)
+	
+	// 只选择必要的字段
+	err := query.Select("id", "uuid", "speed_limit", "device_limit", "u", "d", "transfer_enable").Find(&users).Error
 	return users, err
 }
 
-// GetAllAvailableUsers 获取所有可用用户（不限制组）
+// GetAllAvailableUsers 获取所有可用用户（不限制组，带流控检查）
 func (r *UserRepository) GetAllAvailableUsers() ([]model.User, error) {
 	var users []model.User
 	now := getCurrentTimestamp()
@@ -85,7 +96,7 @@ func (r *UserRepository) GetAllAvailableUsers() ([]model.User, error) {
 		Where("banned = ?", false).
 		Where("(transfer_enable = 0 OR u + d < transfer_enable)"). // 流量为0表示无限制
 		Where("(expired_at IS NULL OR expired_at = 0 OR expired_at >= ?)", now).
-		Select("id", "uuid", "speed_limit", "device_limit").
+		Select("id", "uuid", "speed_limit", "device_limit", "u", "d", "transfer_enable").
 		Find(&users).Error
 	return users, err
 }

@@ -134,6 +134,16 @@ const router = createRouter({
           name: 'AdminServerGroups',
           component: () => import('@/views/admin/ServerGroups.vue')
         },
+        {
+          path: 'user-groups',
+          name: 'AdminUserGroups',
+          component: () => import('@/views/admin/UserGroups.vue')
+        },
+        {
+          path: 'traffic-management',
+          name: 'AdminTrafficManagement',
+          component: () => import('@/views/admin/TrafficManagement.vue')
+        },
       ]
     }
   ]

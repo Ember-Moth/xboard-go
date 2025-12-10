@@ -353,18 +353,22 @@ func (a *Agent) getTrafficFromClashAPI() (map[string]TrafficData, error) {
 }
 
 // reportTraffic 上报流量到面板
+// 策略：优先尝试用户级流量，失败则使用端口流量平均分配
 func (a *Agent) reportTraffic() error {
-	// 尝试从 Clash API 获取用户流量
+	// 方案1：尝试从 Clash API 获取用户级流量
 	traffic, err := a.getTrafficFromClashAPI()
-	if err != nil {
-		// Clash API 不可用，使用端口流量平均分配方案
-		return a.reportTrafficByPort()
+	if err == nil && len(traffic) > 0 {
+		return a.reportUserTraffic(traffic)
 	}
 
-	// 调试：打印获取到的流量数据
-	if len(traffic) > 0 {
-		fmt.Printf("📊 获取到 %d 个用户的流量数据\n", len(traffic))
-	}
+	// 方案2：使用端口流量平均分配（备用方案）
+	// 这种方式不够精确，但至少能统计总流量
+	return a.reportTrafficByPort()
+}
+
+// reportUserTraffic 上报用户级流量（精确统计）
+func (a *Agent) reportUserTraffic(traffic map[string]TrafficData) error {
+	fmt.Printf("📊 获取到 %d 个用户的流量数据\n", len(traffic))
 
 	// 计算增量流量
 	trafficReport := make([]map[string]interface{}, 0)
@@ -386,8 +390,7 @@ func (a *Agent) reportTraffic() error {
 	}
 
 	if len(trafficReport) == 0 {
-		// 没有用户流量，尝试端口流量方案
-		return a.reportTrafficByPort()
+		return nil // 没有流量变化
 	}
 
 	// 构建上报数据
@@ -411,12 +414,14 @@ func (a *Agent) reportTraffic() error {
 }
 
 // reportTrafficByPort 通过端口流量平均分配给用户（备用方案）
+// 注意：这种方式不够精确，但至少能统计总流量
 func (a *Agent) reportTrafficByPort() error {
-	// 获取总流量
+	// 尝试从 Clash API 获取总流量
 	url := fmt.Sprintf("http://127.0.0.1:%d/traffic", a.clashAPIPort)
 	resp, err := a.httpClient.Get(url)
 	if err != nil {
-		return err
+		// Clash API 完全不可用，跳过本次上报
+		return nil
 	}
 	defer resp.Body.Close()
 
@@ -425,7 +430,7 @@ func (a *Agent) reportTrafficByPort() error {
 		Down int64 `json:"down"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
+		return nil
 	}
 
 	// 如果没有流量，直接返回
@@ -447,7 +452,17 @@ func (a *Agent) reportTrafficByPort() error {
 		Download: result.Down,
 	}
 
-	fmt.Printf("📊 总流量: ↑%.2f MB ↓%.2f MB\n", float64(uploadDelta)/1024/1024, float64(downloadDelta)/1024/1024)
+	fmt.Printf("📊 总流量（平均分配模式）: ↑%.2f MB ↓%.2f MB\n", float64(uploadDelta)/1024/1024, float64(downloadDelta)/1024/1024)
+
+	// 统计所有用户数
+	totalUsers := 0
+	for _, node := range a.nodeConfigs {
+		totalUsers += len(a.portUserMap[node.Port])
+	}
+
+	if totalUsers == 0 {
+		return nil
+	}
 
 	// 为每个节点的所有用户平均分配流量
 	nodes := make([]map[string]interface{}, 0)
@@ -457,9 +472,14 @@ func (a *Agent) reportTrafficByPort() error {
 			continue
 		}
 
-		// 平均分配流量
-		avgUpload := uploadDelta / int64(len(users))
-		avgDownload := downloadDelta / int64(len(users))
+		// 按节点用户数比例分配流量
+		nodeRatio := float64(len(users)) / float64(totalUsers)
+		nodeUpload := int64(float64(uploadDelta) * nodeRatio)
+		nodeDownload := int64(float64(downloadDelta) * nodeRatio)
+
+		// 再平均分配给该节点的用户
+		avgUpload := nodeUpload / int64(len(users))
+		avgDownload := nodeDownload / int64(len(users))
 
 		trafficReport := make([]map[string]interface{}, 0, len(users))
 		for _, user := range users {
@@ -475,7 +495,10 @@ func (a *Agent) reportTrafficByPort() error {
 			"users": trafficReport,
 		})
 
-		fmt.Printf("  节点 %d: 为 %d 个用户平均分配流量\n", node.ID, len(users))
+		fmt.Printf("  节点 %d: 为 %d 个用户分配流量（平均 ↑%.2f MB ↓%.2f MB/人）\n", 
+			node.ID, len(users), 
+			float64(avgUpload)/1024/1024, 
+			float64(avgDownload)/1024/1024)
 	}
 
 	if len(nodes) == 0 {

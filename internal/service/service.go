@@ -26,6 +26,8 @@ type Services struct {
 	Scheduler   *SchedulerService
 	Host        *HostService
 	ServerGroup *ServerGroupService
+	UserGroup   *UserGroupService
+	Traffic     *TrafficService
 }
 
 func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *config.Config) *Services {
@@ -56,5 +58,7 @@ func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *confi
 		Scheduler:   NewSchedulerService(repos.User, repos.Order, repos.Stat, mailService, telegramService),
 		Host:        NewHostService(repos.Host, repos.ServerNode, repos.User, repos.Server, cache),
 		ServerGroup: NewServerGroupService(repos.ServerGroup),
+		UserGroup:   NewUserGroupService(repos.UserGroup, repos.Server, repos.Plan, repos.User),
+		Traffic:     NewTrafficService(repos.User, mailService),
 	}
 }

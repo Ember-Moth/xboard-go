@@ -87,6 +87,7 @@ func main() {
 		&model.Host{},
 		&model.ServerNode{},
 		&model.ServerGroup{},
+		&model.UserGroup{},
 	); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}

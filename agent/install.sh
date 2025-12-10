@@ -357,6 +357,8 @@ command="${INSTALL_DIR}/xboard-agent"
 command_args="-panel ${PANEL_URL} -token ${TOKEN}"
 pidfile="/run/\${RC_SVCNAME}.pid"
 command_background="yes"
+output_log="/var/log/xboard-agent.log"
+error_log="/var/log/xboard-agent.err"
 
 depend() {
     need net
@@ -364,8 +366,11 @@ depend() {
 }
 EOF
         chmod +x /etc/init.d/${SERVICE_NAME}
-        rc-update add ${SERVICE_NAME} default
-        rc-service ${SERVICE_NAME} start
+        rc-update add ${SERVICE_NAME} default 2>/dev/null || true
+        rc-service ${SERVICE_NAME} start 2>/dev/null || {
+            log_error "Agent 启动失败，查看日志: tail -f /var/log/xboard-agent.err"
+            exit 1
+        }
     else
         # 其他系统使用 systemd
         cat > /etc/systemd/system/${SERVICE_NAME}.service << EOF

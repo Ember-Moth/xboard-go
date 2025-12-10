@@ -235,7 +235,14 @@ func (s *OrderService) CompleteOrder(tradeNo string, callbackNo string) error {
 
 	// 更新用户
 	user.PlanID = &order.PlanID
-	user.GroupID = plan.GroupID
+	
+	// 如果套餐配置了升级组，则升级用户组
+	if plan.UpgradeGroupID != nil && *plan.UpgradeGroupID > 0 {
+		user.GroupID = plan.UpgradeGroupID
+	} else {
+		user.GroupID = plan.GroupID
+	}
+	
 	user.TransferEnable = plan.TransferEnable * 1024 * 1024 * 1024 // GB to Bytes
 	if days > 0 {
 		user.ExpiredAt = &expiredAt

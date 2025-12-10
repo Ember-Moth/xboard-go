@@ -34,7 +34,8 @@ func UserSubscribe(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		servers, err := services.Server.GetAvailableServers(user)
+		// 使用用户组服务获取可访问的节点
+		servers, err := services.UserGroup.GetAvailableServersForUser(user)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -211,7 +212,8 @@ func ClientSubscribe(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
-		servers, err := services.Server.GetAvailableServers(user)
+		// 使用用户组服务获取可访问的节点
+		servers, err := services.UserGroup.GetAvailableServersForUser(user)
 		if err != nil {
 			c.String(http.StatusInternalServerError, err.Error())
 			return

@@ -166,7 +166,7 @@ func (s *UserService) UpdateTraffic(userID int64, u, d int64) error {
 	return s.userRepo.UpdateTraffic(userID, u, d)
 }
 
-// TrafficFetch 批量处理流量上报
+// TrafficFetch 批量处理流量上报（带流控检查）
 func (s *UserService) TrafficFetch(server *model.Server, trafficData map[int64][2]int64) error {
 	// 计算倍率
 	rate := server.Rate
@@ -174,14 +174,38 @@ func (s *UserService) TrafficFetch(server *model.Server, trafficData map[int64][
 		rate = 1
 	}
 
-	// 应用倍率
+	// 应用倍率并检查流量限制
 	for userID, traffic := range trafficData {
 		u := int64(float64(traffic[0]) * rate)
 		d := int64(float64(traffic[1]) * rate)
-		trafficData[userID] = [2]int64{u, d}
+		
+		// 更新流量
+		if err := s.userRepo.UpdateTraffic(userID, u, d); err != nil {
+			continue
+		}
+		
+		// 检查用户是否超流量
+		user, err := s.userRepo.FindByID(userID)
+		if err != nil {
+			continue
+		}
+		
+		// 流控检查：如果超流量，标记用户（可选：自动封禁或只是记录）
+		if user.TransferEnable > 0 && (user.U + user.D) >= user.TransferEnable {
+			// 超流量处理：这里可以选择自动封禁或发送通知
+			// 方案1：自动封禁（激进）
+			// user.Banned = true
+			// s.userRepo.Update(user)
+			
+			// 方案2：只记录日志（温和）
+			// 下次 GetAvailableUsers 时会自动过滤掉
+			
+			// 使缓存失效，确保下次拉取用户列表时不包含该用户
+			s.InvalidateUserCache(userID)
+		}
 	}
 
-	return s.userRepo.BatchUpdateTraffic(trafficData)
+	return nil
 }
 
 // ResetToken 重置用户 Token

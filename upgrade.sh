@@ -50,7 +50,7 @@ check_config() {
 
 # 读取数据库配置
 read_db_config() {
-    DB_TYPE=$(grep "type:" "$CONFIG_FILE" | head -1 | awk '{print $2}' | tr -d '"')
+    DB_TYPE=$(grep "driver:" "$CONFIG_FILE" | head -1 | awk '{print $2}' | tr -d '"')
     
     if [ "$DB_TYPE" = "mysql" ]; then
         DB_HOST=$(grep "host:" "$CONFIG_FILE" | grep -A 5 "database:" | grep "host:" | awk '{print $2}' | tr -d '"')

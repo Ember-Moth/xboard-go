@@ -105,7 +105,7 @@ server:
   port: 8080
   
 database:
-  type: "mysql"
+  driver: "mysql"
   host: "${DB_HOST}"
   port: ${DB_PORT}
   username: "${DB_USER}"

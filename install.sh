@@ -267,7 +267,7 @@ server:
   port: 8080
   
 database:
-  type: "mysql"
+  driver: "mysql"
   host: "mysql"
   port: 3306
   username: "xboard"

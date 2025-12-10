@@ -102,7 +102,7 @@ app:
   url: "http://localhost:8080"
   
 database:
-  type: "sqlite"  # 或 "mysql"
+  driver: "sqlite"  # 或 "mysql"
   database: "xboard.db"
   
 # ... 更多配置

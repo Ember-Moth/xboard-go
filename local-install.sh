@@ -205,7 +205,7 @@ server:
   port: 8080
   
 database:
-  type: "sqlite"
+  driver: "sqlite"
   database: "xboard.db"
   
 redis:
@@ -356,7 +356,7 @@ server:
   port: 8080
   
 database:
-  type: "mysql"
+  driver: "mysql"
   host: "mysql"
   port: 3306
   username: "xboard"

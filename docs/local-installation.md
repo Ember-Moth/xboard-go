@@ -220,7 +220,7 @@ app:
   jwt_secret: "your-secret-key"
 
 database:
-  type: "mysql"  # 或 "sqlite"
+  driver: "mysql"  # 或 "sqlite"
   host: "localhost"
   port: 3306
   username: "xboard"

@@ -36,7 +36,7 @@ bash upgrade-mysql.sh
 
 ```yaml
 database:
-  type: "mysql"
+  driver: "mysql"
   host: "localhost"
   port: 3306
   username: "root"

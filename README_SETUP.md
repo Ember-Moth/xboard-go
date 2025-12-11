@@ -8,6 +8,8 @@
 bash setup.sh
 ```
 
+> **💡 提示**：安装脚本会自动从 `https://download.sharon.wiki/` 下载预编译二进制文件，无需本地编译环境。支持 amd64 和 arm64 架构。
+
 ## 功能菜单
 
 ```
@@ -32,7 +34,7 @@ bash setup.sh
 1. 选择数据库类型（SQLite 或 MySQL）
 2. 输入数据库信息（MySQL 需要）
 3. 自动生成配置文件
-4. 编译项目
+4. 下载预编译二进制文件
 5. 运行数据库迁移
 
 **SQLite 示例**：
@@ -57,6 +59,11 @@ bash setup.sh
 - 邮箱：`admin@example.com`
 - 密码：`admin123456`
 
+**Agent 自动更新**：
+- Agent 默认启用自动更新功能
+- 每小时检查一次新版本
+- 详见 [Agent 自动更新文档](docs/agent-auto-update.md)
+
 ---
 
 ### 2. 安装到现有 MySQL 数据库
@@ -72,7 +79,7 @@ bash setup.sh
 1. 输入数据库连接信息
 2. 测试数据库连接
 3. 生成配置文件
-4. 编译项目
+4. 下载预编译二进制文件
 5. 运行数据库迁移
 
 **示例**：

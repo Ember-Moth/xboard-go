@@ -465,6 +465,209 @@ func AdminGetDefaultNodeConfig(services *service.Services) gin.HandlerFunc {
 	}
 }
 
+// AgentGetVersion 获取 Agent 版本信息
+func AgentGetVersion(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host := getHostFromContext(c)
+		if host == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		// 获取当前 Agent 版本（从请求头或查询参数）
+		currentVersion := c.GetHeader("X-Agent-Version")
+		if currentVersion == "" {
+			currentVersion = c.Query("version")
+		}
+
+		// 从数据库获取最新版本信息
+		version, err := services.AgentVersion.GetLatestVersion()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		versionInfo := gin.H{
+			"latest_version": version.Version,
+			"download_url":   version.DownloadURL,
+			"sha256":         version.SHA256,
+			"file_size":      version.FileSize,
+			"strategy":       version.Strategy,
+			"release_notes":  version.ReleaseNotes,
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": versionInfo})
+	}
+}
+
+// AgentUpdateStatus 接收 Agent 更新状态通知
+func AgentUpdateStatus(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host := getHostFromContext(c)
+		if host == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var req struct {
+			FromVersion  string `json:"from_version" binding:"required"`
+			ToVersion    string `json:"to_version" binding:"required"`
+			Status       string `json:"status" binding:"required"` // success, failed, rollback
+			ErrorMessage string `json:"error_message"`
+			Timestamp    string `json:"timestamp" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 记录更新日志到数据库
+		log := &model.AgentUpdateLog{
+			HostID:       host.ID,
+			FromVersion:  req.FromVersion,
+			ToVersion:    req.ToVersion,
+			Status:       req.Status,
+			ErrorMessage: req.ErrorMessage,
+		}
+
+		if err := services.AgentVersion.RecordUpdateLog(log); err != nil {
+			fmt.Printf("⚠️  Failed to record update log: %v\n", err)
+		}
+
+		// 打印日志
+		if req.Status == "success" {
+			fmt.Printf("✅ Host %d (%s) updated successfully: %s -> %s\n",
+				host.ID, host.Name, req.FromVersion, req.ToVersion)
+		} else if req.Status == "failed" {
+			fmt.Printf("❌ Host %d (%s) update failed: %s -> %s, error: %s\n",
+				host.ID, host.Name, req.FromVersion, req.ToVersion, req.ErrorMessage)
+		} else if req.Status == "rollback" {
+			fmt.Printf("🔄 Host %d (%s) rolled back: %s -> %s, reason: %s\n",
+				host.ID, host.Name, req.FromVersion, req.ToVersion, req.ErrorMessage)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": "ok"})
+	}
+}
+
+// AdminListAgentVersions 获取 Agent 版本列表
+func AdminListAgentVersions(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+		versions, total, err := services.AgentVersion.List(page, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"items": versions,
+				"total": total,
+				"page":  page,
+			},
+		})
+	}
+}
+
+// AdminCreateAgentVersion 创建 Agent 版本
+func AdminCreateAgentVersion(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req model.AgentVersion
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := services.AgentVersion.Create(&req); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": req})
+	}
+}
+
+// AdminUpdateAgentVersion 更新 Agent 版本
+func AdminUpdateAgentVersion(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+		
+		version, err := services.AgentVersion.GetByVersion("")
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "version not found"})
+			return
+		}
+
+		if err := c.ShouldBindJSON(version); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		version.ID = id
+		if err := services.AgentVersion.Update(version); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": version})
+	}
+}
+
+// AdminSetLatestAgentVersion 设置最新版本
+func AdminSetLatestAgentVersion(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+
+		if err := services.AgentVersion.SetLatest(id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": "ok"})
+	}
+}
+
+// AdminDeleteAgentVersion 删除 Agent 版本
+func AdminDeleteAgentVersion(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+
+		if err := services.AgentVersion.Delete(id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"data": true})
+	}
+}
+
+// AdminListAgentUpdateLogs 获取 Agent 更新日志
+func AdminListAgentUpdateLogs(services *service.Services) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostID, _ := strconv.ParseInt(c.Query("host_id"), 10, 64)
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+		logs, total, err := services.AgentVersion.GetUpdateLogs(hostID, page, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"items": logs,
+				"total": total,
+				"page":  page,
+			},
+		})
+	}
+}
+
 func getHostFromContext(c *gin.Context) *model.Host {
 	host, exists := c.Get("host")
 	if !exists {

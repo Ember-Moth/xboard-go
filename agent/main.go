@@ -11,15 +11,19 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 )
 
 var (
-	panelURL   string
-	token      string
-	configPath string
-	singboxBin string
+	panelURL            string
+	token               string
+	configPath          string
+	singboxBin          string
+	triggerUpdate       bool
+	autoUpdate          bool
+	updateCheckInterval int
 )
 
 func init() {
@@ -27,6 +31,9 @@ func init() {
 	flag.StringVar(&token, "token", "", "主机 Token")
 	flag.StringVar(&configPath, "config", "/etc/sing-box/config.json", "sing-box 配置文件路径")
 	flag.StringVar(&singboxBin, "singbox", "sing-box", "sing-box 可执行文件路径")
+	flag.BoolVar(&triggerUpdate, "update", false, "手动触发更新")
+	flag.BoolVar(&autoUpdate, "auto-update", true, "是否启用自动更新检查")
+	flag.IntVar(&updateCheckInterval, "update-check-interval", 3600, "更新检查间隔（秒）")
 }
 
 type AgentConfig struct {
@@ -43,19 +50,28 @@ type NodeConfig struct {
 }
 
 type Agent struct {
-	panelURL      string
-	token         string
-	configPath    string
-	singboxBin    string
-	singboxCmd    *exec.Cmd
-	lastConfig    string
-	httpClient    *http.Client
-	userVersions  map[int64]int64        // 节点用户版本缓存
-	userHashes    map[int64]string       // 节点用户哈希缓存
-	lastTraffic   map[string]TrafficData // 上次流量数据，用于计算增量
-	nodeConfigs   []NodeConfig           // 当前节点配置
-	clashAPIPort  int                    // Clash API 端口
-	portUserMap   map[int][]string       // 端口到用户的映射（用于单端口多用户场景）
+	panelURL            string
+	token               string
+	configPath          string
+	singboxBin          string
+	singboxCmd          *exec.Cmd
+	lastConfig          string
+	httpClient          *http.Client
+	userVersions        map[int64]int64        // 节点用户版本缓存
+	userHashes          map[int64]string       // 节点用户哈希缓存
+	lastTraffic         map[string]TrafficData // 上次流量数据，用于计算增量
+	nodeConfigs         []NodeConfig           // 当前节点配置
+	clashAPIPort        int                    // Clash API 端口
+	portUserMap         map[int][]string       // 端口到用户的映射（用于单端口多用户场景）
+	versionManager      *VersionManager        // 版本管理器
+	updateChecker       *UpdateChecker         // 更新检查器
+	updateNotifier      *UpdateNotifier        // 更新通知器
+	updatePending       *UpdateInfo            // 待处理的更新信息
+	manualUpdate        bool                   // 是否手动触发更新
+	autoUpdate          bool                   // 是否启用自动更新检查
+	updateCheckInterval time.Duration          // 更新检查间隔
+	updateMutex         sync.Mutex             // 更新互斥锁
+	updating            bool                   // 是否正在更新
 }
 
 // TrafficData 流量数据
@@ -64,18 +80,29 @@ type TrafficData struct {
 	Download int64
 }
 
-func NewAgent() *Agent {
+func NewAgent(manualUpdate bool, autoUpdate bool, updateCheckInterval int) *Agent {
+	versionManager := NewVersionManager(Version)
+	updateChecker := NewUpdateChecker(panelURL, token, versionManager)
+	updateNotifier := NewUpdateNotifier(panelURL, token)
+	
 	return &Agent{
-		panelURL:     panelURL,
-		token:        token,
-		configPath:   configPath,
-		singboxBin:   singboxBin,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
-		userVersions: make(map[int64]int64),
-		userHashes:   make(map[int64]string),
-		lastTraffic:  make(map[string]TrafficData),
-		portUserMap:  make(map[int][]string),
-		clashAPIPort: 9090,
+		panelURL:            panelURL,
+		token:               token,
+		configPath:          configPath,
+		singboxBin:          singboxBin,
+		httpClient:          &http.Client{Timeout: 30 * time.Second},
+		userVersions:        make(map[int64]int64),
+		userHashes:          make(map[int64]string),
+		lastTraffic:         make(map[string]TrafficData),
+		portUserMap:         make(map[int][]string),
+		clashAPIPort:        9090,
+		versionManager:      versionManager,
+		updateChecker:       updateChecker,
+		updateNotifier:      updateNotifier,
+		manualUpdate:        manualUpdate,
+		autoUpdate:          autoUpdate,
+		updateCheckInterval: time.Duration(updateCheckInterval) * time.Second,
+		updating:            false,
 	}
 }
 
@@ -163,13 +190,241 @@ func (a *Agent) sendHeartbeat() error {
 		"os":      runtime.GOOS,
 		"arch":    runtime.GOARCH,
 		"cpus":    runtime.NumCPU(),
-		"version": "1.0.0",
+		"version": a.versionManager.GetCurrentVersion(),
 	}
 
-	_, err := a.apiRequest("POST", "/heartbeat", map[string]interface{}{
+	result, err := a.apiRequest("POST", "/heartbeat", map[string]interface{}{
 		"system_info": systemInfo,
 	})
+	
+	// 检查心跳响应中是否包含版本信息
+	if err == nil && result != nil {
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			if versionInfo, ok := data["version_info"].(map[string]interface{}); ok {
+				// 将版本信息转换为 UpdateInfo
+				updateInfo := &UpdateInfo{}
+				if latestVersion, ok := versionInfo["latest_version"].(string); ok {
+					updateInfo.LatestVersion = latestVersion
+				}
+				if downloadURL, ok := versionInfo["download_url"].(string); ok {
+					updateInfo.DownloadURL = downloadURL
+				}
+				if sha256, ok := versionInfo["sha256"].(string); ok {
+					updateInfo.SHA256 = sha256
+				}
+				if fileSize, ok := versionInfo["file_size"].(float64); ok {
+					updateInfo.FileSize = int64(fileSize)
+				}
+				if strategy, ok := versionInfo["strategy"].(string); ok {
+					updateInfo.Strategy = strategy
+				}
+				if releaseNotes, ok := versionInfo["release_notes"].(string); ok {
+					updateInfo.ReleaseNotes = releaseNotes
+				}
+				
+				// 如果有版本信息，检查是否需要更新
+				if updateInfo.LatestVersion != "" {
+					a.handleUpdateInfo(updateInfo)
+				}
+			}
+		}
+	}
+	
 	return err
+}
+
+// checkForUpdates 检查更新
+func (a *Agent) checkForUpdates() error {
+	currentVersion := a.versionManager.GetCurrentVersion()
+	
+	updateInfo, err := a.updateChecker.CheckUpdate(currentVersion)
+	if err != nil {
+		return fmt.Errorf("failed to check update: %w", err)
+	}
+	
+	a.handleUpdateInfo(updateInfo)
+	return nil
+}
+
+// handleUpdateInfo 处理更新信息
+func (a *Agent) handleUpdateInfo(updateInfo *UpdateInfo) {
+	if updateInfo == nil || updateInfo.LatestVersion == "" {
+		return
+	}
+	
+	shouldUpdate, err := a.updateChecker.ShouldUpdate(updateInfo)
+	if err != nil {
+		updateErr := NewUpdateError("版本比较失败", err)
+		HandleError(updateErr)
+		return
+	}
+	
+	if !shouldUpdate {
+		// 版本相同或当前版本更新，无需更新
+		return
+	}
+	
+	// 检测到新版本
+	fmt.Printf("🔔 检测到新版本: %s (当前版本: %s)\n", 
+		updateInfo.LatestVersion, 
+		a.versionManager.GetCurrentVersion())
+	
+	if updateInfo.ReleaseNotes != "" {
+		fmt.Printf("📝 更新说明: %s\n", updateInfo.ReleaseNotes)
+	}
+	
+	// 根据更新策略决定是否自动更新
+	if updateInfo.Strategy == "auto" {
+		fmt.Println("🚀 自动更新策略已启用，准备更新...")
+		if err := a.performUpdate(updateInfo); err != nil {
+			// 错误已在 performUpdate 中处理和记录
+			fmt.Printf("❌ 自动更新失败: %v\n", err)
+		}
+	} else {
+		// 手动更新策略
+		fmt.Println("ℹ️  手动更新策略已启用，等待手动触发更新")
+		fmt.Printf("   下载地址: %s\n", updateInfo.DownloadURL)
+		fmt.Println("   使用 -update 参数重启 Agent 以执行更新")
+		
+		// 保存待处理的更新信息
+		a.updatePending = updateInfo
+		
+		// 如果是手动触发更新，立即执行
+		if a.manualUpdate {
+			fmt.Println("🚀 手动触发更新...")
+			if err := a.performUpdate(updateInfo); err != nil {
+				// 错误已在 performUpdate 中处理和记录
+				fmt.Printf("❌ 手动更新失败: %v\n", err)
+			}
+		}
+	}
+}
+
+// performUpdate 执行更新流程
+func (a *Agent) performUpdate(updateInfo *UpdateInfo) error {
+	// 使用互斥锁防止并发更新
+	a.updateMutex.Lock()
+	defer a.updateMutex.Unlock()
+	
+	if a.updating {
+		err := fmt.Errorf("更新已在进行中")
+		HandleError(err)
+		return err
+	}
+	
+	a.updating = true
+	defer func() { a.updating = false }()
+	
+	currentVersion := a.versionManager.GetCurrentVersion()
+	targetVersion := updateInfo.LatestVersion
+	
+	fmt.Printf("🚀 开始更新流程: %s -> %s\n", currentVersion, targetVersion)
+	fmt.Println("📥 开始下载新版本...")
+	
+	// 创建更新器
+	updater, err := NewUpdater()
+	if err != nil {
+		updateErr := NewUpdateError("创建更新器失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	// 创建下载器
+	downloader := NewDownloader()
+	
+	// 下载新版本到临时文件
+	newPath := updater.GetNewPath()
+	fmt.Printf("   下载到: %s\n", newPath)
+	
+	if err := downloader.DownloadWithRetry(updateInfo.DownloadURL, newPath); err != nil {
+		updateErr := NewNetworkError("下载失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	fmt.Println("✓ 下载完成")
+	
+	// 验证文件
+	fmt.Println("🔍 验证文件完整性...")
+	verifier := NewFileVerifier()
+	
+	if err := verifier.VerifyAll(newPath, updateInfo.FileSize, updateInfo.SHA256); err != nil {
+		// 验证失败，清理下载的文件
+		updater.CleanupNew()
+		updateErr := NewVerificationError("文件验证失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	fmt.Println("✓ 文件验证通过")
+	
+	// 备份当前版本
+	fmt.Println("💾 备份当前版本...")
+	if err := updater.Backup(); err != nil {
+		updater.CleanupNew()
+		updateErr := NewFileError("备份失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	fmt.Println("✓ 备份完成")
+	
+	// 替换可执行文件
+	fmt.Println("🔄 替换可执行文件...")
+	if err := updater.Replace(); err != nil {
+		// 替换失败，尝试回滚
+		fmt.Println("⚠ 替换失败，正在回滚...")
+		if rollbackErr := updater.Rollback(); rollbackErr != nil {
+			updateErr := NewUpdateError("替换失败且回滚失败", err)
+			HandleError(updateErr)
+			a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+			return updateErr
+		}
+		fmt.Println("✓ 已回滚到原版本")
+		updateErr := NewUpdateError("替换失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyRollback(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	fmt.Println("✓ 替换完成")
+	
+	// 注意：sing-box 进程继续运行，不需要停止
+	fmt.Println("ℹ️  sing-box 服务继续运行中...")
+	
+	// 发送更新成功通知（在重启前发送，因为重启会退出进程）
+	fmt.Println("📤 发送更新成功通知...")
+	if err := a.updateNotifier.NotifySuccess(currentVersion, targetVersion); err != nil {
+		// 通知失败不影响更新流程
+		fmt.Printf("⚠ 发送成功通知失败: %v\n", err)
+	}
+	
+	// 重启 Agent（新进程会接管 sing-box 管理）
+	fmt.Println("🔄 重启 Agent...")
+	fmt.Printf("✓ 更新成功！正在启动新版本 %s\n", targetVersion)
+	
+	// 重启会导致当前进程退出
+	if err := updater.Restart(); err != nil {
+		// 重启失败，回滚
+		fmt.Println("⚠ 重启失败，正在回滚...")
+		if rollbackErr := updater.Rollback(); rollbackErr != nil {
+			updateErr := NewUpdateError("重启失败且回滚失败", err)
+			HandleError(updateErr)
+			a.updateNotifier.NotifyFailure(currentVersion, targetVersion, updateErr)
+			return updateErr
+		}
+		fmt.Println("✓ 已回滚到原版本")
+		updateErr := NewUpdateError("重启失败", err)
+		HandleError(updateErr)
+		a.updateNotifier.NotifyRollback(currentVersion, targetVersion, updateErr)
+		return updateErr
+	}
+	
+	return nil
 }
 
 func (a *Agent) getConfig() (*AgentConfig, error) {
@@ -402,7 +657,7 @@ func (a *Agent) reportUserTraffic(traffic map[string]TrafficData) error {
 		})
 	}
 
-	_, err = a.apiRequest("POST", "/traffic", map[string]interface{}{
+	_, err := a.apiRequest("POST", "/traffic", map[string]interface{}{
 		"nodes": nodes,
 	})
 	if err != nil {
@@ -517,8 +772,18 @@ func (a *Agent) reportTrafficByPort() error {
 }
 
 func (a *Agent) Run() {
-	fmt.Println("XBoard Agent v1.0.0")
+	// 启动时记录当前版本
+	currentVersion := a.versionManager.GetCurrentVersion()
+	fmt.Printf("XBoard Agent %s\n", currentVersion)
 	fmt.Printf("面板: %s\n", a.panelURL)
+	
+	// 显示更新配置
+	if a.autoUpdate {
+		fmt.Printf("自动更新: 已启用 (检查间隔: %v)\n", a.updateCheckInterval)
+	} else {
+		fmt.Println("自动更新: 已禁用")
+	}
+	
 	fmt.Println("正在连接...")
 
 	// 首次获取配置并启动
@@ -538,7 +803,7 @@ func (a *Agent) Run() {
 		os.Exit(1)
 	}
 
-	// 发送首次心跳
+	// 发送首次心跳（包含版本信息）
 	if err := a.sendHeartbeat(); err != nil {
 		fmt.Printf("⚠ 心跳发送失败: %v\n", err)
 	} else {
@@ -549,6 +814,13 @@ func (a *Agent) Run() {
 	heartbeatTicker := time.NewTicker(30 * time.Second)
 	configTicker := time.NewTicker(60 * time.Second)
 	trafficTicker := time.NewTicker(60 * time.Second) // 每分钟上报流量
+	
+	// 添加定期检查更新的 ticker（可配置间隔）
+	var updateCheckTicker *time.Ticker
+	if a.autoUpdate && a.updateCheckInterval > 0 {
+		updateCheckTicker = time.NewTicker(a.updateCheckInterval)
+		defer updateCheckTicker.Stop()
+	}
 
 	// 信号处理
 	sigChan := make(chan os.Signal, 1)
@@ -586,11 +858,26 @@ func (a *Agent) Run() {
 				}
 			}
 
+		case <-func() <-chan time.Time {
+			if updateCheckTicker != nil {
+				return updateCheckTicker.C
+			}
+			// 返回一个永远不会触发的 channel
+			return make(<-chan time.Time)
+		}():
+			// 定期检查更新
+			if err := a.checkForUpdates(); err != nil {
+				fmt.Printf("⚠ 检查更新失败: %v\n", err)
+			}
+
 		case sig := <-sigChan:
 			fmt.Printf("\n收到信号 %v，正在退出...\n", sig)
 			heartbeatTicker.Stop()
 			configTicker.Stop()
 			trafficTicker.Stop()
+			if updateCheckTicker != nil {
+				updateCheckTicker.Stop()
+			}
 			a.stopSingbox()
 			return
 		}
@@ -608,6 +895,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	agent := NewAgent()
+	agent := NewAgent(triggerUpdate, autoUpdate, updateCheckInterval)
 	agent.Run()
 }

@@ -20,6 +20,7 @@ PANEL_URL=$1
 TOKEN=$2
 GITHUB_REPO="ZYHUO/xboard-go"
 GH_PROXY='https://hub.glowp.xyz/'
+DOWNLOAD_BASE_URL="https://download.sharon.wiki"
 INSTALL_DIR="/opt/xboard-agent"
 SERVICE_NAME="xboard-agent"
 SINGBOX_DIR="/etc/sing-box"
@@ -294,10 +295,10 @@ install_agent() {
     mkdir -p "$TEMP_DIR"
     cd "$TEMP_DIR"
     
-    # 下载 Agent（统一二进制，支持 amd64）
-    local AGENT_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/releases/download/1.1/xboard-agent"
+    # 下载 Agent
+    local AGENT_URL="${DOWNLOAD_BASE_URL}/xboard-agent-linux-${ARCH}"
     
-    log_info "下载 Agent..."
+    log_info "下载 Agent (${ARCH})..."
     if ! wget -q --show-progress -O "$INSTALL_DIR/xboard-agent" "$AGENT_URL"; then
         log_warn "下载预编译版本失败，尝试从源码构建..."
         build_agent_from_source
@@ -354,7 +355,7 @@ create_agent_service() {
 name="xboard-agent"
 description="XBoard Agent service"
 command="${INSTALL_DIR}/xboard-agent"
-command_args="-panel ${PANEL_URL} -token ${TOKEN}"
+command_args="-panel ${PANEL_URL} -token ${TOKEN} -auto-update=true -update-check-interval=3600"
 pidfile="/run/\${RC_SVCNAME}.pid"
 command_background="yes"
 output_log="/var/log/xboard-agent.log"
@@ -381,7 +382,7 @@ After=network.target sing-box.service
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/xboard-agent -panel ${PANEL_URL} -token ${TOKEN}
+ExecStart=${INSTALL_DIR}/xboard-agent -panel ${PANEL_URL} -token ${TOKEN} -auto-update=true -update-check-interval=3600
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -416,14 +417,17 @@ show_status() {
         echo "  查看 Agent 状态: rc-service ${SERVICE_NAME} status"
         echo "  查看 Agent 日志: tail -f /var/log/${SERVICE_NAME}.log"
         echo "  重启 Agent: rc-service ${SERVICE_NAME} restart"
+        echo "  手动触发更新: ${INSTALL_DIR}/xboard-agent -panel ${PANEL_URL} -token ${TOKEN} -update"
         echo "  查看 sing-box 状态: rc-service sing-box status"
     else
         echo "  查看 Agent 状态: systemctl status ${SERVICE_NAME}"
         echo "  查看 Agent 日志: journalctl -u ${SERVICE_NAME} -f"
         echo "  重启 Agent: systemctl restart ${SERVICE_NAME}"
+        echo "  手动触发更新: ${INSTALL_DIR}/xboard-agent -panel ${PANEL_URL} -token ${TOKEN} -update"
         echo "  查看 sing-box 状态: systemctl status sing-box"
     fi
     echo ""
+    echo "自动更新: 已启用 (每小时检查一次)"
     echo "Reality 默认 SNI: $TLS_SERVER_DEFAULT"
     echo ""
     

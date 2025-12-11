@@ -118,6 +118,8 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			agent.POST("/traffic", AgentReportTraffic(services))
 			agent.GET("/users", AgentGetUsers(services))
 			agent.POST("/sync", AgentSyncStatus(services))
+			agent.GET("/version", AgentGetVersion(services))
+			agent.POST("/update-status", AgentUpdateStatus(services))
 		}
 
 		// Server routes (节点通信)
@@ -232,6 +234,14 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 			admin.PUT("/node/:id", AdminUpdateNode(services))
 			admin.DELETE("/node/:id", AdminDeleteNode(services))
 			admin.GET("/node/default", AdminGetDefaultNodeConfig(services))
+
+			// Agent Version management (Agent 版本管理)
+			admin.GET("/agent/versions", AdminListAgentVersions(services))
+			admin.POST("/agent/version", AdminCreateAgentVersion(services))
+			admin.PUT("/agent/version/:id", AdminUpdateAgentVersion(services))
+			admin.DELETE("/agent/version/:id", AdminDeleteAgentVersion(services))
+			admin.POST("/agent/version/:id/set_latest", AdminSetLatestAgentVersion(services))
+			admin.GET("/agent/update_logs", AdminListAgentUpdateLogs(services))
 
 			// Site settings (站点设置)
 			admin.GET("/site/settings", AdminGetSiteSettings(services))

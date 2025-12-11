@@ -22,6 +22,54 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_success() { echo -e "${PURPLE}[SUCCESS]${NC} $1"; }
 
+# 下载预编译二进制文件
+DOWNLOAD_BASE_URL="https://download.sharon.wiki"
+
+download_binaries() {
+    log_info "下载预编译二进制文件..."
+    
+    # 检测架构
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            log_error "不支持的架构: $ARCH"
+            exit 1
+            ;;
+    esac
+    
+    # 下载 server
+    if [ ! -f "xboard-server-linux-${ARCH}" ]; then
+        log_info "下载 xboard-server-linux-${ARCH}..."
+        if ! wget -q --show-progress "${DOWNLOAD_BASE_URL}/xboard-server-linux-${ARCH}" -O "xboard-server-linux-${ARCH}"; then
+            log_error "下载 server 失败"
+            exit 1
+        fi
+        chmod +x "xboard-server-linux-${ARCH}"
+    fi
+    
+    # 下载 migrate
+    if [ ! -f "migrate-linux-${ARCH}" ]; then
+        log_info "下载 migrate-linux-${ARCH}..."
+        if ! wget -q --show-progress "${DOWNLOAD_BASE_URL}/migrate-linux-${ARCH}" -O "migrate-linux-${ARCH}"; then
+            log_error "下载 migrate 失败"
+            exit 1
+        fi
+        chmod +x "migrate-linux-${ARCH}"
+    fi
+    
+    # 创建符号链接
+    ln -sf "xboard-server-linux-${ARCH}" xboard-server
+    ln -sf "migrate-linux-${ARCH}" migrate
+    
+    log_success "二进制文件下载完成"
+}
+
 # 显示 Banner
 show_banner() {
     clear
@@ -160,9 +208,8 @@ EOF
     
     log_success "配置文件已生成: $CONFIG_FILE"
     
-    # 编译
-    log_info "编译项目..."
-    make build
+    # 下载二进制文件
+    download_binaries
     
     # 运行迁移
     log_info "运行数据库迁移..."
@@ -249,9 +296,8 @@ EOF
     
     log_success "配置文件已生成"
     
-    # 编译
-    log_info "编译项目..."
-    make build
+    # 下载二进制文件
+    download_binaries
     
     # 运行迁移
     log_info "运行数据库迁移..."

@@ -421,7 +421,6 @@ func (s *HostService) GetUsersForNode(node *model.ServerNode) ([]map[string]inte
 	groupIDs := node.GetGroupIDsAsInt64()
 	nodeType := node.Type
 	protocolSettings := node.ProtocolSettings
-	createdAt := node.CreatedAt
 
 	var users []model.User
 	var err error

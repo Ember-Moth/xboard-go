@@ -40,7 +40,7 @@ MIT License
 ### 一键安装（推荐）
 
 ```bash
-curl -sL https://raw.githubusercontent.com/ZYHUO/xboard-go/main/install.sh | bash
+wget https://raw.githubusercontent.com/ZYHUO/xboard-go/main/install.sh && bash install.sh
 ```
 
 > 💡 脚本会自动下载预编译二进制文件，无需本地编译环境。

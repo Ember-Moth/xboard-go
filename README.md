@@ -53,7 +53,7 @@ wget https://raw.githubusercontent.com/ZYHUO/xboard-go/main/install.sh && bash i
 - 5️⃣ 查看迁移状态
 - 6️⃣ 生成配置文件
 
-### 快速开始（SQLite - 零配置）
+### 快速开始（需配置编译环境 提前git下）
 
 ```bash
 bash setup.sh

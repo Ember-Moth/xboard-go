@@ -554,8 +554,6 @@ EOF
     fi
 
     cat > docker-compose.yaml << 'EOF'
-version: '3.8'
-
 services:
   dashgo:
     build: .

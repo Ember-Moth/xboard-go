@@ -321,11 +321,11 @@ build_agent_from_source() {
     fi
     
     cd "$TEMP_DIR"
-    git clone --depth 1 "https://github.com/${GITHUB_REPO}.git" dashGO 2>/dev/null || {
-        git clone --depth 1 "${GH_PROXY}https://github.com/${GITHUB_REPO}.git" dashGO
+    git clone --depth 1 "https://github.com/${GITHUB_REPO}.git" dashgo 2>/dev/null || {
+        git clone --depth 1 "${GH_PROXY}https://github.com/${GITHUB_REPO}.git" dashgo
     }
     
-    cd dashGO/agent
+    cd dashgo/agent
     go build -ldflags="-s -w" -o "$INSTALL_DIR/dashgo-agent" .
     
     log_info "从源码构建完成"

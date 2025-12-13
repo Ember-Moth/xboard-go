@@ -3,8 +3,8 @@ package service
 import (
 	"time"
 
-	"xboard/internal/model"
-	"xboard/internal/repository"
+	"dashgo/internal/model"
+	"dashgo/internal/repository"
 )
 
 // ServerGroupService 服务器组服务

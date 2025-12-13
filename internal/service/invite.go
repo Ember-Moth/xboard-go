@@ -9,7 +9,7 @@ import (
 	"dashgo/pkg/utils"
 )
 
-// InviteService 邀请服�?
+// InviteService 邀请服
 type InviteService struct {
 	inviteRepo     *repository.InviteCodeRepository
 	userRepo       *repository.UserRepository

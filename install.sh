@@ -341,7 +341,23 @@ install_panel() {
             cd "$TEMP_DIR"
             local REPO_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
             log_info "下载配置模板..."
-            if wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+            
+            # 尝试使用代理下载
+            if ! wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+                if [ -n "$GH_PROXY" ]; then
+                    log_warn "代理下载失败，切换到 GitHub 原源..."
+                    REPO_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
+                    rm -f dashgo.zip 2>/dev/null
+                    wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1 || {
+                        log_warn "配置模板下载失败，将使用默认配置"
+                        mkdir -p "$INSTALL_DIR/configs"
+                        mkdir -p "$INSTALL_DIR/web/dist"
+                        continue_without_template=true
+                    }
+                fi
+            fi
+            
+            if [ "$continue_without_template" != "true" ]; then
                 log_info "解压配置模板..."
                 unzip -q dashgo.zip
                 # 自动检测解压后的目录
@@ -360,10 +376,6 @@ install_panel() {
                     mkdir -p "$INSTALL_DIR/configs"
                     mkdir -p "$INSTALL_DIR/web/dist"
                 fi
-            else
-                log_warn "配置模板下载失败，将使用默认配置"
-                mkdir -p "$INSTALL_DIR/configs"
-                mkdir -p "$INSTALL_DIR/web/dist"
             fi
         fi
     fi
@@ -386,7 +398,25 @@ install_panel() {
         log_info "下载源码..."
         log_info "下载地址: $REPO_URL"
         cd "$TEMP_DIR"
-        if wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+        
+        # 尝试使用代理下载
+        if ! wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+            if [ -n "$GH_PROXY" ]; then
+                log_warn "代理下载失败，切换到 GitHub 原源..."
+                REPO_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
+                log_info "新下载地址: $REPO_URL"
+                rm -f dashgo.zip 2>/dev/null
+                if ! wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+                    log_error "源码下载失败，请检查网络连接"
+                    exit 1
+                fi
+            else
+                log_error "源码下载失败，请检查网络连接"
+                exit 1
+            fi
+        fi
+        
+        if [ -f dashgo.zip ]; then
             log_info "解压源码..."
             unzip -q dashgo.zip
             # 自动检测解压后的目录
@@ -424,11 +454,10 @@ install_panel() {
     # 创建必要目录
     mkdir -p data
     mkdir -p web/dist
+    mkdir -p configs
     
-    # 创建配置文件
-    if [ ! -f "configs/config.yaml" ]; then
-        create_panel_config
-    fi
+    # 创建配置文件（总是创建，确保存在）
+    create_panel_config
     
     # 创建 Docker Compose 文件
     create_docker_compose
@@ -549,10 +578,10 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 COPY dashgo-server /app/dashgo-server
-COPY configs/config.yaml /app/config.yaml
-COPY web/dist /app/web/dist
-
 RUN chmod +x /app/dashgo-server
+
+# 创建必要的目录
+RUN mkdir -p /app/configs /app/web/dist /app/data
 
 EXPOSE 8080
 
@@ -1109,7 +1138,25 @@ update_panel() {
         log_info "下载最新版本..."
         local REPO_URL="${GH_PROXY}https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
         log_info "下载地址: $REPO_URL"
-        if wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+        
+        # 尝试使用代理下载
+        if ! wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+            if [ -n "$GH_PROXY" ]; then
+                log_warn "代理下载失败，切换到 GitHub 原源..."
+                REPO_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
+                log_info "新下载地址: $REPO_URL"
+                rm -f dashgo.zip 2>/dev/null
+                if ! wget --show-progress -O dashgo.zip "$REPO_URL" 2>&1; then
+                    log_error "源码下载失败，请检查网络连接"
+                    exit 1
+                fi
+            else
+                log_error "源码下载失败，请检查网络连接"
+                exit 1
+            fi
+        fi
+        
+        if [ -f dashgo.zip ]; then
             log_info "解压源码..."
             unzip -q dashgo.zip
             # 自动检测解压后的目录

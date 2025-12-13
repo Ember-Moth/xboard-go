@@ -512,6 +512,14 @@ install_panel() {
     # 创建配置文件（总是创建，确保存在）
     create_panel_config "$use_mysql"
     
+    # 调试：检查预编译文件
+    if [ -f "dashgo-server" ]; then
+        log_info "检测到预编译文件: dashgo-server"
+        ls -lh dashgo-server
+    else
+        log_info "未检测到预编译文件，将使用 Dockerfile 构建"
+    fi
+    
     # 创建 Docker Compose 文件
     create_docker_compose "$use_mysql" "$web_port"
     
@@ -653,6 +661,7 @@ EOF
     
     # 保存密码到环境文件
     cat > .env << EOF
+WEB_PORT=${web_port}
 REDIS_PASSWORD=${REDIS_PASS}
 JWT_SECRET=${JWT_SECRET}
 NODE_TOKEN=${NODE_TOKEN}
@@ -734,7 +743,7 @@ services:
     image: nginx:alpine
     container_name: dashgo-nginx
     ports:
-      - "${web_port}:80"
+      - "${WEB_PORT}:80"
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
@@ -789,7 +798,7 @@ services:
     image: nginx:alpine
     container_name: dashgo-nginx
     ports:
-      - "${web_port}:80"
+      - "${WEB_PORT}:80"
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf

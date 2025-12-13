@@ -682,7 +682,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./configs/config.yaml:/app/config.yaml
+      - ./configs/config.yaml:/app/configs/config.yaml
       - ./data:/app/data
       - ./web/dist:/app/web/dist
     depends_on:
@@ -761,7 +761,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./configs/config.yaml:/app/config.yaml
+      - ./configs/config.yaml:/app/configs/config.yaml
       - ./data:/app/data
       - ./web/dist:/app/web/dist
     depends_on:

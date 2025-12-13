@@ -9,9 +9,9 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./configs/config.yaml:/app/configs/config.yaml
       - ./data:/app/data
-      - ./web/dist:/app/web/dist:ro
+      - ./web/dist:/app/web/dist
     depends_on:
       mysql:
         condition: service_healthy

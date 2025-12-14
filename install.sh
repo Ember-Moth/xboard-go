@@ -933,43 +933,103 @@ http {
     }
 
     server {
-        listen 80;
+        listen 80 default_server;
+        listen [::]:80 default_server;
         server_name _;
+        
+        # 增加缓冲区大小，防止请求头过大
+        client_header_buffer_size 4k;
+        large_client_header_buffers 4 16k;
+        
+        # 错误页面
+        error_page 502 503 504 /50x.html;
+        location = /50x.html {
+            return 503 '{"error": "Service temporarily unavailable"}';
+            add_header Content-Type application/json;
+        }
         
         location / {
             proxy_pass http://dashgo;
             proxy_http_version 1.1;
+            
+            # WebSocket 支持
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
+            
+            # 正确传递请求头
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            
+            # 超时设置
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
+            
+            # 缓冲设置
+            proxy_buffering on;
+            proxy_buffer_size 4k;
+            proxy_buffers 8 4k;
+            proxy_busy_buffers_size 8k;
+            
+            # 错误处理
+            proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;
+            proxy_next_upstream_tries 1;
+        }
+        
+        # 健康检查
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
         }
     }
     
     # HTTPS 配置 (取消注释并配置证书后使用)
     # server {
-    #     listen 443 ssl http2;
-    #     server_name your-domain.com;
+    #     listen 443 ssl http2 default_server;
+    #     listen [::]:443 ssl http2 default_server;
+    #     server_name _;
     #     
     #     ssl_certificate /etc/nginx/ssl/cert.pem;
     #     ssl_certificate_key /etc/nginx/ssl/key.pem;
     #     ssl_protocols TLSv1.2 TLSv1.3;
-    #     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    #     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+    #     ssl_prefer_server_ciphers off;
+    #     
+    #     # 增加缓冲区大小
+    #     client_header_buffer_size 4k;
+    #     large_client_header_buffers 4 16k;
     #     
     #     location / {
     #         proxy_pass http://dashgo;
     #         proxy_http_version 1.1;
+    #         
+    #         # WebSocket 支持
     #         proxy_set_header Upgrade $http_upgrade;
     #         proxy_set_header Connection "upgrade";
+    #         
+    #         # 正确传递请求头
     #         proxy_set_header Host $host;
     #         proxy_set_header X-Real-IP $remote_addr;
     #         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     #         proxy_set_header X-Forwarded-Proto $scheme;
+    #         proxy_set_header X-Forwarded-Host $host;
+    #         proxy_set_header X-Forwarded-Port $server_port;
+    #         
+    #         # 超时设置
+    #         proxy_connect_timeout 60s;
+    #         proxy_send_timeout 60s;
+    #         proxy_read_timeout 60s;
+    #         
+    #         # 缓冲设置
+    #         proxy_buffering on;
+    #         proxy_buffer_size 4k;
+    #         proxy_buffers 8 4k;
+    #         proxy_busy_buffers_size 8k;
     #     }
     # }
 }

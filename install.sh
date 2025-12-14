@@ -910,6 +910,14 @@ http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
     
+    # 日志格式
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent"';
+    
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+    
     sendfile        on;
     keepalive_timeout  65;
     client_max_body_size 50m;

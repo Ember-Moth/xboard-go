@@ -32,7 +32,7 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn), // 只打印警告和错误，不打印普通SQL
+		Logger: logger.Default.LogMode(logger.Error), // 只打印错误，不打印 record not found 警告
 	})
 	if err != nil {
 		return nil, err

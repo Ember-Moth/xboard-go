@@ -27,7 +27,6 @@ const isActive = (path: string) => {
 }
 
 const siteName = computed(() => siteSettings.value.site_name || 'dashGO')
-const primaryColor = computed(() => siteSettings.value.primary_color || '#6366f1')
 
 const fetchSettings = async () => {
   try {
@@ -44,18 +43,18 @@ watch(() => route.path, () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <!-- Mobile Header -->
-    <header class="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-area-top">
+  <div class="min-h-screen bg-white">
+    <!-- Mobile Header - Flat Design -->
+    <header class="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 safe-area-top">
       <div class="flex items-center justify-between px-4 h-14">
-        <button @click="isSidebarOpen = true" class="p-2 -ml-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors">
-          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button @click="isSidebarOpen = true" class="p-2 -ml-2 hover:bg-gray-50 transition-simple">
+          <svg class="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <span class="font-semibold text-gray-900">{{ siteName }}</span>
-        <RouterLink to="/settings" class="p-2 -mr-2 rounded-lg hover:bg-gray-100">
-          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+        <span class="font-semibold text-black">{{ siteName }}</span>
+        <RouterLink to="/settings" class="p-2 -mr-2 hover:bg-gray-50 transition-simple">
+          <div class="w-8 h-8 bg-black flex items-center justify-center text-white text-sm font-medium" style="border-radius: 4px;">
             {{ userStore.user?.email?.charAt(0).toUpperCase() }}
           </div>
         </RouterLink>
@@ -67,57 +66,56 @@ watch(() => route.path, () => {
       <div v-if="isSidebarOpen" class="fixed inset-0 z-40 bg-black/30 lg:hidden" @click="isSidebarOpen = false"/>
     </Transition>
 
-    <!-- Sidebar -->
-    <aside :class="['fixed top-0 left-0 z-50 h-full w-72 bg-white transition-transform duration-300 ease-out lg:translate-x-0 shadow-xl lg:shadow-none', isSidebarOpen ? 'translate-x-0' : '-translate-x-full']">
+    <!-- Sidebar - Flat Design -->
+    <aside :class="['fixed top-0 left-0 z-50 h-full w-60 bg-white border-r border-gray-200 transition-transform duration-200 lg:translate-x-0', isSidebarOpen ? 'translate-x-0' : '-translate-x-full']">
       <div class="flex flex-col h-full">
-        <!-- Logo -->
-        <div class="flex items-center gap-3 px-5 h-16 border-b border-gray-100">
-          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-indigo-500/30">
-            X
-          </div>
-          <span class="text-lg font-bold text-gray-900">{{ siteName }}</span>
+        <!-- Logo - Simple Text -->
+        <div class="flex items-center gap-3 px-4 h-16 border-b border-gray-200">
+          <span class="text-xl font-bold text-black">{{ siteName }}</span>
         </div>
 
-        <!-- Navigation -->
-        <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <!-- Navigation - Simple List Style -->
+        <nav class="flex-1 py-2 overflow-y-auto">
           <RouterLink
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
-            :class="['flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200', isActive(item.path) ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50']"
+            class="nav-item"
+            :class="{ 'active': isActive(item.path) }"
           >
             <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="item.icon"/>
             </svg>
-            <span class="font-medium text-sm">{{ item.name }}</span>
+            <span class="text-sm">{{ item.name }}</span>
           </RouterLink>
           
           <!-- Admin -->
           <RouterLink
             v-if="userStore.isAdmin"
             to="/admin"
-            :class="['flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-4 pt-4 border-t border-gray-100', route.path.startsWith('/admin') ? 'bg-red-50 text-red-600' : 'text-gray-600 hover:bg-gray-50']"
+            class="nav-item mt-2 pt-2 border-t border-gray-200"
+            :class="{ 'active': route.path.startsWith('/admin') }"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
-            <span class="font-medium text-sm">管理后台</span>
+            <span class="text-sm">管理后台</span>
           </RouterLink>
         </nav>
 
-        <!-- User Info -->
-        <div class="p-3 border-t border-gray-100">
-          <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium shadow-md">
+        <!-- User Info - Square Avatar -->
+        <div class="p-3 border-t border-gray-200">
+          <div class="flex items-center gap-3 p-3 bg-gray-50">
+            <div class="w-10 h-10 bg-black flex items-center justify-center text-white font-medium" style="border-radius: 4px;">
               {{ userStore.user?.email?.charAt(0).toUpperCase() }}
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-900 truncate">{{ userStore.user?.email }}</p>
+              <p class="text-sm font-medium text-black truncate">{{ userStore.user?.email }}</p>
               <p class="text-xs text-gray-500">{{ userStore.isAdmin ? '管理员' : '用户' }}</p>
             </div>
           </div>
-          <button @click="userStore.logout()" class="w-full mt-2 px-4 py-2 text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+          <button @click="userStore.logout()" class="w-full mt-2 px-4 py-2 text-sm text-gray-700 hover:text-black hover:bg-gray-50 border border-gray-300 transition-simple" style="border-radius: 4px;">
             退出登录
           </button>
         </div>
@@ -125,16 +123,16 @@ watch(() => route.path, () => {
     </aside>
 
     <!-- Main Content -->
-    <main class="lg:ml-72 pt-14 lg:pt-0 min-h-screen">
+    <main class="lg:ml-60 pt-14 lg:pt-0 min-h-screen bg-white">
       <div class="p-4 lg:p-6 max-w-6xl mx-auto">
         <RouterView />
       </div>
     </main>
 
-    <!-- Mobile Bottom Nav -->
-    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 safe-area-bottom z-40">
+    <!-- Mobile Bottom Nav - Flat Design -->
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-40">
       <div class="flex items-center justify-around h-16">
-        <RouterLink v-for="item in navItems.slice(0, 5)" :key="item.path" :to="item.path" :class="['flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors', isActive(item.path) ? 'text-indigo-600' : 'text-gray-400']">
+        <RouterLink v-for="item in navItems.slice(0, 5)" :key="item.path" :to="item.path" :class="['flex flex-col items-center gap-1 px-3 py-2 transition-simple', isActive(item.path) ? 'text-black' : 'text-gray-400']">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="item.icon"/>
           </svg>
@@ -147,7 +145,7 @@ watch(() => route.path, () => {
 
 <style scoped>
 .fade-enter-active, .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;

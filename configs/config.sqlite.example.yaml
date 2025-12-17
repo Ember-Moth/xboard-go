@@ -1,0 +1,47 @@
+app:
+  name: "dashGO"
+  mode: "release"
+  listen: ":8080"
+
+database:
+  driver: "sqlite"
+  database: "./data/dashgo.db"
+  # SQLite specific configuration for better concurrency
+  max_open_conns: 25        # Maximum number of open connections
+  max_idle_conns: 5         # Maximum number of idle connections
+  conn_max_lifetime: 300    # Connection maximum lifetime in seconds (5 minutes)
+  wal_mode: true           # Enable WAL mode for better concurrency
+  busy_timeout: 30000      # Busy timeout in milliseconds (30 seconds)
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: "your-secret-key"
+  expire_hour: 24
+
+node:
+  token: "your-node-token"
+  push_interval: 60
+  pull_interval: 60
+  enable_sync: false
+
+mail:
+  host: ""
+  port: 587
+  username: ""
+  password: ""
+  from_name: "dashGO"
+  from_addr: ""
+  encryption: "tls"
+
+telegram:
+  bot_token: ""
+  chat_id: ""
+
+admin:
+  email: "admin@example.com"
+  password: "admin123"

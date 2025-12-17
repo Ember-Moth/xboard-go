@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"dashgo/internal/config"
 	"dashgo/internal/middleware"
@@ -108,8 +109,15 @@ func RegisterRoutes(r *gin.Engine, services *service.Services, cfg *config.Confi
 		// Email verification
 		v1.POST("/guest/send_email_code", GuestSendEmailCode(services))
 
-		// Telegram webhook
-		v1.POST("/telegram/webhook", TelegramWebhook(services))
+		// Telegram webhook with authentication
+		webhookAuthConfig := middleware.WebhookAuthConfig{
+			SecretToken: services.Telegram.GetSecretToken(),
+			RateLimit:   10,                // 10 requests per minute
+			RateWindow:  1 * time.Minute,
+		}
+		v1.POST("/telegram/webhook", 
+			middleware.WebhookAuthMiddleware(webhookAuthConfig, nil),
+			TelegramWebhook(services))
 
 		// Agent routes (主机对接)
 		agent := v1.Group("/agent")

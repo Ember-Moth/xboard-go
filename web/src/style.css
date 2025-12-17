@@ -1,10 +1,8 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  --color-primary: #6366f1;
-}
 
 * {
   margin: 0;
@@ -17,15 +15,15 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f5f5f7;
+  font-family: var(--font-family-base);
+  background: var(--bg-primary);
   min-height: 100vh;
-  color: #1d1d1f;
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar */
+/* Scrollbar - Minimal Style */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -34,54 +32,111 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 2px;
+  background: var(--color-gray-300);
+  border-radius: var(--radius-sm);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--color-gray-400);
 }
 
-/* Components */
+/* Flat Design Components */
 @layer components {
+  /* Card - Flat Design */
   .card {
-    @apply bg-white rounded-2xl shadow-sm p-4;
+    @apply bg-white border border-gray-200 p-4;
+    border-radius: var(--radius-md);
   }
+  
+  /* Button - Flat Design with Minimal Radius */
   .btn {
-    @apply px-4 py-2.5 rounded-xl font-medium transition-all duration-200 inline-flex items-center justify-center gap-2 active:scale-95;
+    @apply px-4 py-2.5 font-medium inline-flex items-center justify-center gap-2;
+    border-radius: var(--radius-md);
+    transition: var(--transition-fast);
+    min-height: var(--touch-target-min);
   }
   .btn-primary {
-    @apply bg-indigo-500 text-white hover:bg-indigo-600;
+    @apply bg-black text-white border border-black;
+  }
+  .btn-primary:hover {
+    @apply bg-gray-800;
   }
   .btn-secondary {
-    @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+    @apply bg-white text-black border border-gray-300;
   }
+  .btn-secondary:hover {
+    @apply bg-gray-50;
+  }
+  .btn-outline {
+    @apply bg-transparent text-black border border-black;
+  }
+  .btn-outline:hover {
+    @apply bg-black text-white;
+  }
+  
+  /* Input - Simple Border Style */
   .input {
-    @apply w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all;
+    @apply w-full px-4 py-3 border border-gray-300 bg-white;
+    border-radius: var(--radius-md);
+    transition: var(--transition-fast);
   }
+  .input:focus {
+    @apply outline-none border-black;
+  }
+  .input:disabled {
+    @apply bg-gray-50 text-gray-400 cursor-not-allowed;
+  }
+  
+  /* Badge - Simple Color Blocks */
   .badge {
-    @apply px-2.5 py-1 rounded-full text-xs font-medium;
+    @apply px-2.5 py-1 text-xs font-medium;
+    border-radius: var(--radius-sm);
   }
   .badge-success {
-    @apply bg-green-100 text-green-700;
+    @apply bg-success/10 text-success border border-success/20;
   }
   .badge-warning {
-    @apply bg-yellow-100 text-yellow-700;
+    @apply bg-warning/10 text-warning border border-warning/20;
   }
-  .badge-danger {
-    @apply bg-red-100 text-red-700;
+  .badge-error {
+    @apply bg-error/10 text-error border border-error/20;
   }
   .badge-info {
-    @apply bg-blue-100 text-blue-700;
+    @apply bg-info/10 text-info border border-info/20;
+  }
+  
+  /* Table - Clear Borders and Zebra Stripes */
+  .table {
+    @apply w-full border-collapse;
+  }
+  .table th {
+    @apply bg-gray-50 text-left px-4 py-3 font-semibold text-sm border-b-2 border-gray-300;
+  }
+  .table td {
+    @apply px-4 py-3 border-b border-gray-200;
+  }
+  .table tbody tr:nth-child(even) {
+    @apply bg-gray-50;
+  }
+  .table tbody tr:hover {
+    @apply bg-gray-100;
+  }
+  
+  /* Navigation - Simple List Style */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 text-gray-700;
+    transition: var(--transition-fast);
+  }
+  .nav-item:hover {
+    @apply bg-gray-50 text-black;
+  }
+  .nav-item.active {
+    @apply bg-black text-white;
   }
 }
 
-/* Animations */
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Simple Transitions - No Complex Animations */
+.transition-simple {
+  transition: var(--transition-fast);
 }
 
 /* Safe area for mobile */
@@ -100,18 +155,21 @@ body {
   display: none;
 }
 
-/* Prose for content */
+/* Prose for content - Monochrome */
 .prose {
   @apply text-gray-700 leading-relaxed;
 }
 .prose h1, .prose h2, .prose h3 {
-  @apply font-semibold text-gray-900 mt-4 mb-2;
+  @apply font-semibold text-black mt-4 mb-2;
 }
 .prose p {
   @apply mb-3;
 }
 .prose a {
-  @apply text-indigo-600 hover:underline;
+  @apply text-black underline;
+}
+.prose a:hover {
+  @apply text-gray-700;
 }
 .prose ul, .prose ol {
   @apply pl-5 mb-3;
@@ -120,8 +178,10 @@ body {
   @apply mb-1;
 }
 .prose code {
-  @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm;
+  @apply bg-gray-100 px-1.5 py-0.5 text-sm border border-gray-200;
+  border-radius: var(--radius-sm);
 }
 .prose pre {
-  @apply bg-gray-900 text-gray-100 p-4 rounded-xl overflow-x-auto mb-3;
+  @apply bg-gray-900 text-white p-4 overflow-x-auto mb-3 border border-gray-800;
+  border-radius: var(--radius-md);
 }

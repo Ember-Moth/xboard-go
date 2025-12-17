@@ -2,6 +2,21 @@
 
 # dashGO 完整编译脚本
 # 用于在 Linux 上编译 Dashboard 和全架构的 Agent
+#
+# 前置要求:
+#   - Go >= 1.22 (用于编译 Server 和 Agent)
+#   - Node.js >= 18.0.0 (用于编译前端)
+#   - npm (随 Node.js 安装)
+#   - Docker (可选，用于交叉编译支持 SQLite 的 Server)
+#
+# 使用方法:
+#   ./build-all.sh all              # 构建所有组件
+#   ./build-all.sh frontend         # 仅构建前端
+#   RUN_TESTS=true ./build-all.sh   # 构建前运行测试
+#
+# 详细文档:
+#   - 前端测试设置: web/TESTING_SETUP.md
+#   - 构建文档: BUILD.md
 
 set -e
 
@@ -43,21 +58,68 @@ clean() {
 build_frontend() {
     echo -e "${YELLOW}开始构建前端...${NC}"
     
+    # 检查 Node.js 是否安装
+    if ! command -v node &>/dev/null; then
+        echo -e "${RED}错误: 未安装 Node.js${NC}"
+        echo -e "${YELLOW}请访问 https://nodejs.org/ 安装 Node.js (>= 18.0.0)${NC}"
+        echo -e "${YELLOW}或参考 web/TESTING_SETUP.md 获取详细安装指南${NC}"
+        return 1
+    fi
+    
+    # 检查 Node.js 版本
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 18 ]; then
+        echo -e "${YELLOW}警告: Node.js 版本过低 (当前: $(node -v), 推荐: >= 18.0.0)${NC}"
+        echo -e "${YELLOW}可能会遇到兼容性问题${NC}"
+    fi
+    
+    # 检查并安装依赖
     if [ ! -d "web/node_modules" ]; then
         echo -e "${YELLOW}安装前端依赖...${NC}"
         cd web
-        npm install
+        npm install || {
+            echo -e "${RED}依赖安装失败${NC}"
+            cd ..
+            return 1
+        }
+        cd ..
+        echo -e "${GREEN}✓ 依赖安装完成${NC}"
+    else
+        echo -e "${GREEN}✓ 依赖已存在，跳过安装${NC}"
+    fi
+    
+    # 运行测试（可选）
+    if [ "${RUN_TESTS}" = "true" ]; then
+        echo -e "${YELLOW}运行前端测试...${NC}"
+        cd web
+        npm run test:run || {
+            echo -e "${YELLOW}警告: 测试失败，但继续构建${NC}"
+        }
         cd ..
     fi
     
+    # 构建前端
+    echo -e "${YELLOW}构建前端应用...${NC}"
     cd web
-    npm run build
+    npm run build || {
+        echo -e "${RED}前端构建失败${NC}"
+        cd ..
+        return 1
+    }
     cd ..
     
     # 复制构建产物
-    cp -r web/dist ${WEB_OUTPUT_DIR}/
-    
-    echo -e "${GREEN}✓ 前端构建完成${NC}"
+    if [ -d "web/dist" ]; then
+        cp -r web/dist ${WEB_OUTPUT_DIR}/
+        echo -e "${GREEN}✓ 前端构建完成${NC}"
+        
+        # 显示构建产物大小
+        DIST_SIZE=$(du -sh web/dist | cut -f1)
+        echo -e "${GREEN}  构建产物大小: ${DIST_SIZE}${NC}"
+    else
+        echo -e "${RED}错误: 构建产物目录不存在${NC}"
+        return 1
+    fi
 }
 
 # 使用 Docker 构建 Server (支持交叉编译 + SQLite)
@@ -380,6 +442,15 @@ main() {
             echo "  agent         - 仅构建 Agent (全架构)"
             echo "  all           - 构建所有组件 (默认，本地编译)"
             echo "  all-docker    - 构建所有组件 (Docker 编译，推荐)"
+            echo ""
+            echo "环境变量:"
+            echo "  VERSION       - 设置版本号 (默认: 1.0.0)"
+            echo "  RUN_TESTS     - 构建前运行测试 (设置为 'true' 启用)"
+            echo ""
+            echo "示例:"
+            echo "  $0 all                    # 构建所有组件"
+            echo "  VERSION=2.0.0 $0 all      # 指定版本号构建"
+            echo "  RUN_TESTS=true $0 all     # 构建前运行测试"
             exit 1
             ;;
     esac

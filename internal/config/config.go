@@ -35,6 +35,13 @@ type DatabaseConfig struct {
 	Database string `yaml:"database"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	
+	// SQLite specific configuration
+	MaxOpenConns    int    `yaml:"max_open_conns"`     // Maximum open connections
+	MaxIdleConns    int    `yaml:"max_idle_conns"`     // Maximum idle connections
+	ConnMaxLifetime int    `yaml:"conn_max_lifetime"`  // Connection maximum lifetime in seconds
+	WALMode         bool   `yaml:"wal_mode"`           // Enable WAL mode for better concurrency
+	BusyTimeout     int    `yaml:"busy_timeout"`       // Busy timeout in milliseconds
 }
 
 type RedisConfig struct {
@@ -67,8 +74,9 @@ type MailConfig struct {
 }
 
 type TelegramConfig struct {
-	BotToken string `yaml:"bot_token"`
-	ChatID   string `yaml:"chat_id"`
+	BotToken    string `yaml:"bot_token"`
+	ChatID      string `yaml:"chat_id"`
+	SecretToken string `yaml:"secret_token"`
 }
 
 func Load(path string) (*Config, error) {
@@ -94,6 +102,24 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Node.PullInterval == 0 {
 		cfg.Node.PullInterval = 60
+	}
+	
+	// Set SQLite defaults
+	if cfg.Database.Driver == "sqlite" {
+		if cfg.Database.MaxOpenConns == 0 {
+			cfg.Database.MaxOpenConns = 25
+		}
+		if cfg.Database.MaxIdleConns == 0 {
+			cfg.Database.MaxIdleConns = 5
+		}
+		if cfg.Database.ConnMaxLifetime == 0 {
+			cfg.Database.ConnMaxLifetime = 300 // 5 minutes
+		}
+		if cfg.Database.BusyTimeout == 0 {
+			cfg.Database.BusyTimeout = 30000 // 30 seconds
+		}
+		// WAL mode is enabled by default for better concurrency
+		cfg.Database.WALMode = true
 	}
 
 	return &cfg, nil

@@ -7,60 +7,59 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 马卡龙配色
-        macaron: {
-          pink: '#FFB5BA',
-          peach: '#FFCBA4',
-          yellow: '#FFE5A0',
-          mint: '#B8E0D2',
-          blue: '#A8D8EA',
-          lavender: '#D5AAFF',
-          cream: '#FFF5E4',
+        // Monochrome Theme - Black & White
+        black: '#000000',
+        white: '#FFFFFF',
+        gray: {
+          50: '#F8F9FA',
+          100: '#E9ECEF',
+          200: '#DEE2E6',
+          300: '#CED4DA',
+          400: '#ADB5BD',
+          500: '#6C757D',
+          600: '#495057',
+          700: '#343A40',
+          800: '#212529',
         },
-        primary: {
-          50: '#f0f4ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-        },
-        surface: {
-          50: '#fafafa',
-          100: '#f5f5f5',
-          200: '#e5e5e5',
-          300: '#d4d4d4',
-        }
+        // Semantic Colors - Functional Only
+        success: '#28A745',
+        warning: '#FFC107',
+        error: '#DC3545',
+        info: '#17A2B8',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        mono: ['SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Consolas', 'Courier New', 'monospace'],
+      },
+      spacing: {
+        'xs': '0.25rem',
+        'sm': '0.5rem',
+        'md': '1rem',
+        'lg': '1.5rem',
+        'xl': '2rem',
+        '2xl': '3rem',
+        '3xl': '4rem',
+      },
+      borderRadius: {
+        'none': '0',
+        'sm': '2px',
+        'DEFAULT': '4px',
+        'md': '4px',
+        'lg': '6px',
       },
       boxShadow: {
-        'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
-        'glow': '0 0 20px rgba(99, 102, 241, 0.3)',
+        'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        'DEFAULT': '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        'md': '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        'none': 'none',
       },
-      animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'scale-in': 'scaleIn 0.2s ease-out',
+      transitionDuration: {
+        'fast': '150ms',
+        'DEFAULT': '200ms',
+        'slow': '300ms',
       },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        scaleIn: {
-          '0%': { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
-        },
+      transitionTimingFunction: {
+        'DEFAULT': 'ease',
       },
     },
   },

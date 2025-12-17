@@ -297,6 +297,396 @@ install_docker_compose() {
     log_success "Docker Compose 安装完成"
 }
 
+# ==================== 端口检测功能 ====================
+
+# 使用 netstat 检测端口
+check_port_netstat() {
+    local port="$1"
+    local result=""
+    local process_info=""
+    
+    if command -v netstat >/dev/null 2>&1; then
+        # 检查 TCP 端口 (支持多种格式)
+        result=$(netstat -tlnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -1)
+        if [ -n "$result" ]; then
+            process_info=$(echo "$result" | awk '{print $7}' | head -1)
+            echo "netstat TCP result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        # 检查 UDP 端口
+        result=$(netstat -ulnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -1)
+        if [ -n "$result" ]; then
+            process_info=$(echo "$result" | awk '{print $6}' | head -1)
+            echo "netstat UDP result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        # 在某些系统上，也检查 -an 参数的输出
+        result=$(netstat -an 2>/dev/null | grep -E ":${port}[[:space:]].*LISTEN" | head -1)
+        if [ -n "$result" ]; then
+            echo "netstat -an result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        return 0  # 端口可用
+    else
+        return 2  # 命令不可用
+    fi
+}
+
+# 使用 lsof 检测端口
+check_port_lsof() {
+    local port="$1"
+    local result=""
+    
+    if command -v lsof >/dev/null 2>&1; then
+        # 检查 TCP 和 UDP 端口
+        result=$(lsof -i ":${port}" -sTCP:LISTEN 2>/dev/null)
+        if [ -n "$result" ]; then
+            echo "lsof TCP result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        # 也检查所有协议的端口使用情况
+        result=$(lsof -i ":${port}" 2>/dev/null | grep -v "^COMMAND")
+        if [ -n "$result" ]; then
+            echo "lsof general result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        return 0  # 端口可用
+    else
+        return 2  # 命令不可用
+    fi
+}
+
+# 使用 ss 检测端口
+check_port_ss() {
+    local port="$1"
+    local result=""
+    
+    if command -v ss >/dev/null 2>&1; then
+        # 检查 TCP 监听端口
+        result=$(ss -tlnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$")
+        if [ -n "$result" ]; then
+            echo "ss TCP result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        # 检查 UDP 监听端口
+        result=$(ss -ulnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$")
+        if [ -n "$result" ]; then
+            echo "ss UDP result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        # 检查所有状态的端口
+        result=$(ss -anp 2>/dev/null | grep -E ":${port}[[:space:]].*LISTEN")
+        if [ -n "$result" ]; then
+            echo "ss general result: $result" >> "$detection_log" 2>/dev/null || true
+            return 1  # 端口被占用
+        fi
+        
+        return 0  # 端口可用
+    else
+        return 2  # 命令不可用
+    fi
+}
+
+# 综合端口检测函数
+check_port_availability() {
+    local port="$1"
+    local method_used=""
+    local detection_log="/tmp/port_detection_${port}.log"
+    local available=true
+    local error_msg=""
+    local process_info=""
+    local consensus_available=0
+    local consensus_occupied=0
+    
+    # 验证端口号有效性
+    if [ -z "$port" ] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        log_error "无效的端口号: $port"
+        return 1
+    fi
+    
+    # 清空日志文件
+    > "$detection_log"
+    
+    log_info "检测端口 ${port} 可用性..." | tee -a "$detection_log"
+    
+    # 方法1: 使用 netstat
+    log_info "尝试使用 netstat 检测端口 ${port}..." | tee -a "$detection_log"
+    check_port_netstat "$port"
+    local netstat_result=$?
+    
+    case $netstat_result in
+        0)
+            log_info "netstat: 端口 ${port} 可用" | tee -a "$detection_log"
+            consensus_available=$((consensus_available + 1))
+            method_used="netstat"
+            ;;
+        1)
+            log_warn "netstat: 端口 ${port} 被占用" | tee -a "$detection_log"
+            consensus_occupied=$((consensus_occupied + 1))
+            method_used="netstat"
+            ;;
+        2)
+            log_warn "netstat: 命令不可用" | tee -a "$detection_log"
+            ;;
+    esac
+    
+    # 方法2: 使用 lsof
+    log_info "尝试使用 lsof 检测端口 ${port}..." | tee -a "$detection_log"
+    check_port_lsof "$port"
+    local lsof_result=$?
+    
+    case $lsof_result in
+        0)
+            log_info "lsof: 端口 ${port} 可用" | tee -a "$detection_log"
+            consensus_available=$((consensus_available + 1))
+            if [ $netstat_result -eq 2 ]; then
+                method_used="lsof"
+            fi
+            ;;
+        1)
+            log_warn "lsof: 端口 ${port} 被占用" | tee -a "$detection_log"
+            consensus_occupied=$((consensus_occupied + 1))
+            if [ $netstat_result -eq 2 ]; then
+                method_used="lsof"
+            fi
+            ;;
+        2)
+            log_warn "lsof: 命令不可用" | tee -a "$detection_log"
+            ;;
+    esac
+    
+    # 方法3: 使用 ss
+    log_info "尝试使用 ss 检测端口 ${port}..." | tee -a "$detection_log"
+    check_port_ss "$port"
+    local ss_result=$?
+    
+    case $ss_result in
+        0)
+            log_info "ss: 端口 ${port} 可用" | tee -a "$detection_log"
+            consensus_available=$((consensus_available + 1))
+            if [ $netstat_result -eq 2 ] && [ $lsof_result -eq 2 ]; then
+                method_used="ss"
+            fi
+            ;;
+        1)
+            log_warn "ss: 端口 ${port} 被占用" | tee -a "$detection_log"
+            consensus_occupied=$((consensus_occupied + 1))
+            if [ $netstat_result -eq 2 ] && [ $lsof_result -eq 2 ]; then
+                method_used="ss"
+            fi
+            ;;
+        2)
+            log_warn "ss: 命令不可用" | tee -a "$detection_log"
+            ;;
+    esac
+    
+    # 如果所有传统方法都不可用，尝试使用 nc 进行连接测试
+    if [ $netstat_result -eq 2 ] && [ $lsof_result -eq 2 ] && [ $ss_result -eq 2 ]; then
+        log_info "尝试使用 nc 进行连接测试..." | tee -a "$detection_log"
+        if command -v nc >/dev/null 2>&1; then
+            if timeout 3 nc -z localhost "$port" 2>/dev/null; then
+                log_warn "nc: 端口 ${port} 被占用" | tee -a "$detection_log"
+                consensus_occupied=$((consensus_occupied + 1))
+                method_used="nc"
+            else
+                log_info "nc: 端口 ${port} 可用" | tee -a "$detection_log"
+                consensus_available=$((consensus_available + 1))
+                method_used="nc"
+            fi
+        else
+            # 最后尝试使用 telnet
+            if command -v telnet >/dev/null 2>&1; then
+                log_info "尝试使用 telnet 进行连接测试..." | tee -a "$detection_log"
+                if timeout 3 bash -c "echo '' | telnet localhost $port" 2>/dev/null | grep -q "Connected"; then
+                    log_warn "telnet: 端口 ${port} 被占用" | tee -a "$detection_log"
+                    consensus_occupied=$((consensus_occupied + 1))
+                    method_used="telnet"
+                else
+                    log_info "telnet: 端口 ${port} 可用" | tee -a "$detection_log"
+                    consensus_available=$((consensus_available + 1))
+                    method_used="telnet"
+                fi
+            else
+                error_msg="所有端口检测方法都不可用"
+                log_error "$error_msg" | tee -a "$detection_log"
+                return 1
+            fi
+        fi
+    fi
+    
+    # 基于共识决定最终结果
+    log_info "检测结果统计: 可用票数=${consensus_available}, 占用票数=${consensus_occupied}" | tee -a "$detection_log"
+    
+    if [ $consensus_available -eq 0 ] && [ $consensus_occupied -eq 0 ]; then
+        log_error "所有检测方法都失败了" | tee -a "$detection_log"
+        return 1
+    fi
+    
+    if [ $consensus_occupied -gt 0 ]; then
+        available=false
+    else
+        available=true
+    fi
+    
+    # 记录最终结果
+    if [ "$available" = true ]; then
+        log_success "端口 ${port} 检测完成: 可用 (共识: ${consensus_available}/${consensus_occupied})" | tee -a "$detection_log"
+        return 0
+    else
+        log_error "端口 ${port} 检测完成: 被占用 (共识: ${consensus_available}/${consensus_occupied})" | tee -a "$detection_log"
+        return 1
+    fi
+}
+
+# 安装端口检测工具
+install_port_detection_tools() {
+    log_info "检查并安装端口检测工具..."
+    local tools_needed=""
+    
+    # 检查需要安装的工具
+    command -v netstat >/dev/null 2>&1 || tools_needed="$tools_needed net-tools"
+    command -v lsof >/dev/null 2>&1 || tools_needed="$tools_needed lsof"
+    command -v ss >/dev/null 2>&1 || tools_needed="$tools_needed iproute2"
+    command -v nc >/dev/null 2>&1 || tools_needed="$tools_needed netcat"
+    
+    if [ -n "$tools_needed" ]; then
+        log_info "需要安装的工具: $tools_needed"
+        case $OS in
+            debian|ubuntu)
+                $PKG_UPDATE >/dev/null 2>&1 || true
+                $PKG_INSTALL $tools_needed >/dev/null 2>&1 || log_warn "部分端口检测工具安装失败"
+                ;;
+            centos|rhel|rocky|alma|fedora)
+                # CentOS/RHEL 中 iproute2 包名可能不同
+                tools_needed=$(echo "$tools_needed" | sed 's/iproute2/iproute/g')
+                tools_needed=$(echo "$tools_needed" | sed 's/netcat/nc/g')
+                $PKG_UPDATE >/dev/null 2>&1 || true
+                $PKG_INSTALL $tools_needed >/dev/null 2>&1 || log_warn "部分端口检测工具安装失败"
+                ;;
+            alpine)
+                tools_needed=$(echo "$tools_needed" | sed 's/net-tools/net-tools/g')
+                tools_needed=$(echo "$tools_needed" | sed 's/iproute2/iproute2/g')
+                tools_needed=$(echo "$tools_needed" | sed 's/netcat/netcat-openbsd/g')
+                $PKG_UPDATE >/dev/null 2>&1 || true
+                $PKG_INSTALL $tools_needed >/dev/null 2>&1 || log_warn "部分端口检测工具安装失败"
+                ;;
+            *)
+                log_warn "未知系统，无法自动安装端口检测工具"
+                ;;
+        esac
+        
+        # 验证安装结果
+        local installed_count=0
+        command -v netstat >/dev/null 2>&1 && installed_count=$((installed_count + 1))
+        command -v lsof >/dev/null 2>&1 && installed_count=$((installed_count + 1))
+        command -v ss >/dev/null 2>&1 && installed_count=$((installed_count + 1))
+        command -v nc >/dev/null 2>&1 && installed_count=$((installed_count + 1))
+        
+        log_info "端口检测工具安装完成，可用工具数量: $installed_count"
+    else
+        log_info "所有端口检测工具已安装"
+    fi
+}
+
+# 端口检测诊断函数
+diagnose_port_detection() {
+    local port="$1"
+    
+    log_info "开始端口检测诊断..."
+    echo ""
+    echo "系统信息:"
+    echo "  操作系统: $OS $OS_VERSION"
+    echo "  架构: $ARCH"
+    echo "  内核版本: $(uname -r 2>/dev/null || echo '未知')"
+    echo ""
+    
+    echo "可用的端口检测工具:"
+    command -v netstat >/dev/null 2>&1 && echo "  ✓ netstat ($(netstat --version 2>&1 | head -1 | cut -d' ' -f1-2 || echo '版本未知'))" || echo "  ✗ netstat (未安装)"
+    command -v lsof >/dev/null 2>&1 && echo "  ✓ lsof ($(lsof -v 2>&1 | head -1 || echo '版本未知'))" || echo "  ✗ lsof (未安装)"
+    command -v ss >/dev/null 2>&1 && echo "  ✓ ss ($(ss -V 2>&1 | head -1 || echo '版本未知'))" || echo "  ✗ ss (未安装)"
+    command -v nc >/dev/null 2>&1 && echo "  ✓ nc ($(nc -h 2>&1 | head -1 | cut -d' ' -f1-2 || echo '版本未知'))" || echo "  ✗ nc (未安装)"
+    command -v telnet >/dev/null 2>&1 && echo "  ✓ telnet" || echo "  ✗ telnet (未安装)"
+    echo ""
+    
+    if [ -n "$port" ]; then
+        echo "端口 ${port} 详细检测结果:"
+        echo ""
+        
+        if command -v netstat >/dev/null 2>&1; then
+            echo "  netstat TCP 监听端口:"
+            netstat -tlnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -5 | sed 's/^/    /' || echo "    (无结果)"
+            echo "  netstat UDP 监听端口:"
+            netstat -ulnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -5 | sed 's/^/    /' || echo "    (无结果)"
+            echo "  netstat 所有端口状态:"
+            netstat -an 2>/dev/null | grep -E ":${port}[[:space:]]" | head -5 | sed 's/^/    /' || echo "    (无结果)"
+            echo ""
+        fi
+        
+        if command -v lsof >/dev/null 2>&1; then
+            echo "  lsof 端口使用情况:"
+            lsof -i ":${port}" 2>/dev/null | head -10 | sed 's/^/    /' || echo "    (无结果)"
+            echo ""
+        fi
+        
+        if command -v ss >/dev/null 2>&1; then
+            echo "  ss TCP 监听端口:"
+            ss -tlnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -5 | sed 's/^/    /' || echo "    (无结果)"
+            echo "  ss UDP 监听端口:"
+            ss -ulnp 2>/dev/null | grep -E ":${port}[[:space:]]|:${port}$" | head -5 | sed 's/^/    /' || echo "    (无结果)"
+            echo ""
+        fi
+        
+        if command -v nc >/dev/null 2>&1; then
+            echo "  nc 连接测试:"
+            if timeout 3 nc -z localhost "$port" 2>/dev/null; then
+                echo "    端口 ${port} 可连接 (被占用)"
+            else
+                echo "    端口 ${port} 不可连接 (可能可用)"
+            fi
+            echo ""
+        fi
+        
+        echo "常见端口用途参考:"
+        case $port in
+            80) echo "    端口 80: HTTP 网页服务" ;;
+            443) echo "    端口 443: HTTPS 安全网页服务" ;;
+            22) echo "    端口 22: SSH 远程登录" ;;
+            21) echo "    端口 21: FTP 文件传输" ;;
+            25) echo "    端口 25: SMTP 邮件发送" ;;
+            53) echo "    端口 53: DNS 域名解析" ;;
+            3306) echo "    端口 3306: MySQL 数据库" ;;
+            5432) echo "    端口 5432: PostgreSQL 数据库" ;;
+            6379) echo "    端口 6379: Redis 缓存" ;;
+            8080) echo "    端口 8080: 备用 HTTP 服务" ;;
+            *) echo "    端口 ${port}: 自定义应用端口" ;;
+        esac
+        echo ""
+        
+        echo "检测日志文件: /tmp/port_detection_${port}.log"
+        if [ -f "/tmp/port_detection_${port}.log" ]; then
+            echo "日志文件大小: $(wc -l < "/tmp/port_detection_${port}.log") 行"
+        fi
+        echo ""
+        
+        echo "建议的解决方案:"
+        echo "  1. 如果端口被占用，可以:"
+        echo "     - 停止占用端口的服务"
+        echo "     - 使用其他可用端口"
+        echo "     - 检查是否有僵尸进程占用端口"
+        echo "  2. 如果检测工具不可用，可以安装:"
+        echo "     - Ubuntu/Debian: apt-get install net-tools lsof iproute2 netcat"
+        echo "     - CentOS/RHEL: yum install net-tools lsof iproute netcat"
+        echo "  3. 如果仍有问题，请检查防火墙设置"
+    fi
+}
+
 
 # ==================== 面板安装 ====================
 
@@ -355,17 +745,80 @@ install_panel() {
         web_port=443
         use_ssl="true"
         
-        echo ""
-        echo "请选择证书类型:"
-        echo "  1) 使用 Cloudflare Origin Certificate (推荐)"
-        echo "  2) 使用自签名证书 (测试用)"
-        echo "  3) 我已有证书文件"
-        read -p "请选择 [1-3]: " cert_type
-        cert_type=${cert_type:-1}
+        # 检测端口 443 可用性
+        log_info "检测 HTTPS 端口 443 可用性..."
+        if check_port_availability 443; then
+            log_success "端口 443 可用，可以启用 HTTPS"
+        else
+            log_error "端口 443 被占用，无法启用 HTTPS"
+            echo ""
+            echo "诊断信息:"
+            diagnose_port_detection 443
+            echo ""
+            echo "请选择处理方式:"
+            echo "  1) 继续使用 HTTP (端口 80)"
+            echo "  2) 手动指定其他端口"
+            echo "  3) 退出安装，手动处理端口冲突"
+            read -p "请选择 [1-3]: " port_conflict_action
+            
+            case $port_conflict_action in
+                1)
+                    log_info "切换到 HTTP 模式"
+                    web_port=80
+                    use_ssl="false"
+                    # 检测端口 80
+                    if ! check_port_availability 80; then
+                        log_error "端口 80 也被占用"
+                        diagnose_port_detection 80
+                        read -p "请输入其他可用端口: " web_port
+                        if ! check_port_availability "$web_port"; then
+                            log_error "指定端口 $web_port 也被占用，请手动处理"
+                            exit 1
+                        fi
+                    fi
+                    ;;
+                2)
+                    read -p "请输入 HTTPS 端口 [默认: 8443]: " web_port
+                    web_port=${web_port:-8443}
+                    if ! check_port_availability "$web_port"; then
+                        log_error "指定端口 $web_port 被占用"
+                        diagnose_port_detection "$web_port"
+                        exit 1
+                    fi
+                    ;;
+                3)
+                    log_info "安装已取消"
+                    exit 0
+                    ;;
+            esac
+        fi
+        
+        if [ "$use_ssl" = "true" ]; then
+            echo ""
+            echo "请选择证书类型:"
+            echo "  1) 使用 Cloudflare Origin Certificate (推荐)"
+            echo "  2) 使用自签名证书 (测试用)"
+            echo "  3) 我已有证书文件"
+            read -p "请选择 [1-3]: " cert_type
+            cert_type=${cert_type:-1}
+        fi
     else
         read -p "请输入 Web 访问端口 [默认: 80]: " web_port
         web_port=${web_port:-80}
         use_ssl="false"
+        
+        # 检测指定端口可用性
+        log_info "检测端口 ${web_port} 可用性..."
+        if ! check_port_availability "$web_port"; then
+            log_error "端口 ${web_port} 被占用"
+            diagnose_port_detection "$web_port"
+            echo ""
+            read -p "请输入其他可用端口: " web_port
+            if ! check_port_availability "$web_port"; then
+                log_error "指定端口 $web_port 也被占用，请手动处理"
+                exit 1
+            fi
+        fi
     fi
     
     # 询问管理员账号
@@ -376,6 +829,9 @@ install_panel() {
     echo ""
     read -p "请输入管理员密码 [默认: admin123456]: " admin_password
     admin_password=${admin_password:-admin123456}
+    
+    # 安装端口检测工具
+    install_port_detection_tools
     
     install_docker
     install_docker_compose

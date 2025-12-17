@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -787,7 +789,7 @@ func AdminUpdateTelegramSettings(services *service.Services) gin.HandlerFunc {
 	}
 }
 
-// AdminSetTelegramWebhook 设置 Telegram Webhook
+// AdminSetTelegramWebhook 设置 Telegram Webhook with secure authentication
 func AdminSetTelegramWebhook(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -799,13 +801,26 @@ func AdminSetTelegramWebhook(services *service.Services) gin.HandlerFunc {
 			return
 		}
 
+		// Generate secure token if not already set
+		if services.Telegram.GetSecretToken() == "" {
+			services.Telegram.SetSecretToken(generateSecureWebhookToken())
+		}
+
 		if err := services.Telegram.SetWebhook(req.WebhookURL); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"data": true})
+		c.JSON(http.StatusOK, gin.H{
+			"data": true,
+			"secret_token": services.Telegram.GetSecretToken(),
+		})
 	}
+}
+
+// generateSecureWebhookToken generates a secure token for webhook authentication
+func generateSecureWebhookToken() string {
+	return fmt.Sprintf("webhook_%d_%x", time.Now().Unix(), sha256.Sum256([]byte(time.Now().String())))[:32]
 }
 
 // ==================== 支付管理 ====================

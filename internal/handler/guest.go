@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -262,12 +263,20 @@ func GetPublicSettings(services *service.Services) gin.HandlerFunc {
 	}
 }
 
-// TelegramWebhook Telegram Webhook
+// TelegramWebhook Telegram Webhook with authentication
 func TelegramWebhook(services *service.Services) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get the validated body from middleware
+		body, exists := c.Get("webhook_body")
+		if !exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Request body not found"})
+			return
+		}
+		
+		// Parse the webhook update
 		var update service.TelegramUpdate
-		if err := c.ShouldBindJSON(&update); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := json.Unmarshal(body.([]byte), &update); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON format"})
 			return
 		}
 

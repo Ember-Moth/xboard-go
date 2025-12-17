@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,18 +20,20 @@ import (
 
 // TelegramService Telegram Bot 服务
 type TelegramService struct {
-	botToken    string
-	chatID      string
-	httpClient  *http.Client
-	userRepo    *repository.UserRepository
-	settingRepo *repository.SettingRepository
+	botToken     string
+	chatID       string
+	secretToken  string
+	httpClient   *http.Client
+	userRepo     *repository.UserRepository
+	settingRepo  *repository.SettingRepository
 }
 
 func NewTelegramService(cfg config.TelegramConfig) *TelegramService {
 	return &TelegramService{
-		botToken:   cfg.BotToken,
-		chatID:     cfg.ChatID,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		botToken:    cfg.BotToken,
+		chatID:      cfg.ChatID,
+		secretToken: cfg.SecretToken,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -42,6 +46,16 @@ func (s *TelegramService) SetRepositories(userRepo *repository.UserRepository, s
 // GetBotToken 获取 Bot Token
 func (s *TelegramService) GetBotToken() string {
 	return s.botToken
+}
+
+// GetSecretToken 获取 Secret Token
+func (s *TelegramService) GetSecretToken() string {
+	return s.secretToken
+}
+
+// SetSecretToken 设置 Secret Token
+func (s *TelegramService) SetSecretToken(token string) {
+	s.secretToken = token
 }
 
 // TelegramUpdate Telegram 更新
@@ -427,13 +441,22 @@ func (s *TelegramService) NotifyNewTicket(subject, userEmail string) error {
 	return s.SendMarkdown(chatID, text)
 }
 
-// SetWebhook 设置 Webhook
+// SetWebhook 设置 Webhook with secret token
 func (s *TelegramService) SetWebhook(webhookURL string) error {
 	if s.botToken == "" {
 		return fmt.Errorf("telegram bot not configured")
 	}
+	
+	// Generate secret token if not set
+	if s.secretToken == "" {
+		s.secretToken = s.generateSecureToken()
+	}
+	
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/setWebhook", s.botToken)
-	data := map[string]string{"url": webhookURL}
+	data := map[string]string{
+		"url":          webhookURL,
+		"secret_token": s.secretToken,
+	}
 	body, _ := json.Marshal(data)
 	resp, err := s.httpClient.Post(apiURL, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -445,4 +468,11 @@ func (s *TelegramService) SetWebhook(webhookURL string) error {
 		return fmt.Errorf("set webhook failed: %s", string(respBody))
 	}
 	return nil
+}
+
+// generateSecureToken generates a cryptographically secure token
+func (s *TelegramService) generateSecureToken() string {
+	data := fmt.Sprintf("%d-%s-%d", time.Now().UnixNano(), s.botToken, time.Now().Unix())
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
 }

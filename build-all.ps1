@@ -1,5 +1,19 @@
-# XBoard 完整编译脚本 (PowerShell 版本)
+# dashGO 完整编译脚本 (PowerShell 版本)
 # 用于在 Windows 上编译 Dashboard 和全架构的 Agent
+#
+# 前置要求:
+#   - Go >= 1.22 (用于编译 Server 和 Agent)
+#   - Node.js >= 18.0.0 (用于编译前端)
+#   - npm (随 Node.js 安装)
+#
+# 使用方法:
+#   .\build-all.ps1 -Target all              # 构建所有组件
+#   .\build-all.ps1 -Target frontend         # 仅构建前端
+#   $env:RUN_TESTS="true"; .\build-all.ps1   # 构建前运行测试
+#
+# 详细文档:
+#   - 前端测试设置: web/TESTING_SETUP.md
+#   - 构建文档: BUILD.md
 
 param(
     [string]$Target = "all",
@@ -41,21 +55,83 @@ function Clean {
 function Build-Frontend {
     Write-Host "开始构建前端..." -ForegroundColor Yellow
     
+    # 检查 Node.js 是否安装
+    try {
+        $nodeVersion = node --version
+        Write-Host "  Node.js 版本: $nodeVersion" -ForegroundColor Green
+        
+        # 检查版本号
+        $versionNumber = [int]($nodeVersion -replace 'v(\d+)\..*', '$1')
+        if ($versionNumber -lt 18) {
+            Write-Host "  警告: Node.js 版本过低 (当前: $nodeVersion, 推荐: >= 18.0.0)" -ForegroundColor Yellow
+            Write-Host "  可能会遇到兼容性问题" -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "错误: 未安装 Node.js" -ForegroundColor Red
+        Write-Host "请访问 https://nodejs.org/ 安装 Node.js (>= 18.0.0)" -ForegroundColor Yellow
+        Write-Host "或参考 web/TESTING_SETUP.md 获取详细安装指南" -ForegroundColor Yellow
+        throw "Node.js 未安装"
+    }
+    
+    # 检查并安装依赖
     if (-not (Test-Path "web/node_modules")) {
         Write-Host "安装前端依赖..." -ForegroundColor Yellow
         Push-Location web
-        npm install
+        try {
+            npm install
+            Write-Host "✓ 依赖安装完成" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "依赖安装失败" -ForegroundColor Red
+            Pop-Location
+            throw
+        }
+        Pop-Location
+    }
+    else {
+        Write-Host "✓ 依赖已存在，跳过安装" -ForegroundColor Green
+    }
+    
+    # 运行测试（可选）
+    if ($env:RUN_TESTS -eq "true") {
+        Write-Host "运行前端测试..." -ForegroundColor Yellow
+        Push-Location web
+        try {
+            npm run test:run
+        }
+        catch {
+            Write-Host "警告: 测试失败，但继续构建" -ForegroundColor Yellow
+        }
         Pop-Location
     }
     
+    # 构建前端
+    Write-Host "构建前端应用..." -ForegroundColor Yellow
     Push-Location web
-    npm run build
+    try {
+        npm run build
+    }
+    catch {
+        Write-Host "前端构建失败" -ForegroundColor Red
+        Pop-Location
+        throw
+    }
     Pop-Location
     
     # 复制构建产物
-    Copy-Item -Recurse -Force web/dist $WEB_OUTPUT_DIR/
-    
-    Write-Host "✓ 前端构建完成" -ForegroundColor Green
+    if (Test-Path "web/dist") {
+        Copy-Item -Recurse -Force web/dist $WEB_OUTPUT_DIR/
+        Write-Host "✓ 前端构建完成" -ForegroundColor Green
+        
+        # 显示构建产物大小
+        $distSize = (Get-ChildItem -Recurse web/dist | Measure-Object -Property Length -Sum).Sum / 1MB
+        Write-Host ("  构建产物大小: {0:N2} MB" -f $distSize) -ForegroundColor Green
+    }
+    else {
+        Write-Host "错误: 构建产物目录不存在" -ForegroundColor Red
+        throw "构建产物目录不存在"
+    }
 }
 
 # 构建 Server (Dashboard)
@@ -289,6 +365,14 @@ switch ($Target.ToLower()) {
         Write-Host "  -Target all       - 构建所有组件 (默认)"
         Write-Host ""
         Write-Host "  -Version <ver>    - 指定版本号 (默认: 1.0.0)"
+        Write-Host ""
+        Write-Host "环境变量:"
+        Write-Host "  `$env:RUN_TESTS   - 构建前运行测试 (设置为 'true' 启用)"
+        Write-Host ""
+        Write-Host "示例:"
+        Write-Host "  .\build-all.ps1 -Target all                    # 构建所有组件"
+        Write-Host "  .\build-all.ps1 -Target all -Version 2.0.0     # 指定版本号构建"
+        Write-Host "  `$env:RUN_TESTS='true'; .\build-all.ps1         # 构建前运行测试"
         exit 1
     }
 }

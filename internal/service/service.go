@@ -29,6 +29,9 @@ type Services struct {
 	UserGroup    *UserGroupService
 	Traffic      *TrafficService
 	AgentVersion *AgentVersionService
+	Security     *SecurityService
+	Resilience   *ResilienceService
+	Validation   *ValidationService
 }
 
 func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *config.Config) *Services {
@@ -39,6 +42,9 @@ func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *confi
 	serverService := NewServerService(repos.Server, repos.User, cache, cfg)
 	orderService := NewOrderService(repos.Order, repos.User, repos.Plan, repos.Coupon)
 	userGroupService := NewUserGroupService(repos.UserGroup, repos.Server, repos.Plan, repos.User)
+	securityService := NewSecurityService(repos.DB, mailService, telegramService)
+	resilienceService := NewResilienceService(repos.DB)
+	validationService := NewValidationService(securityService)
 
 	// 设置 UserGroupService 告ServerService 依赖
 	userGroupService.SetServerService(serverService)
@@ -66,5 +72,8 @@ func NewServices(repos *repository.Repositories, cache *cache.Client, cfg *confi
 		UserGroup:    userGroupService,
 		Traffic:      NewTrafficService(repos.User, mailService),
 		AgentVersion: NewAgentVersionService(repos.DB),
+		Security:     securityService,
+		Resilience:   resilienceService,
+		Validation:   validationService,
 	}
 }

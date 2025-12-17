@@ -690,9 +690,120 @@ diagnose_port_detection() {
 
 # ==================== 面板安装 ====================
 
+# 统一检查所有端口
+check_all_ports() {
+    log_info "检查端口占用情况..."
+    echo ""
+    
+    # 定义需要检查的端口
+    local -A ports=(
+        [8080]="dashGO Server"
+        [443]="HTTPS/Trojan/VLESS"
+        [80]="HTTP"
+        [8388]="Shadowsocks"
+        [10086]="VMess"
+        [9000]="SSMAPI"
+    )
+    
+    local conflicts=()
+    local conflict_details=()
+    
+    # 检查每个端口
+    for port in "${!ports[@]}"; do
+        local service="${ports[$port]}"
+        local pid=""
+        local process=""
+        
+        # 尝试检测端口占用
+        if command -v lsof >/dev/null 2>&1; then
+            pid=$(lsof -ti :$port 2>/dev/null | head -1)
+        elif command -v netstat >/dev/null 2>&1; then
+            pid=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | head -1)
+        elif command -v ss >/dev/null 2>&1; then
+            pid=$(ss -tlnp 2>/dev/null | grep ":$port " | awk '{print $6}' | grep -oP 'pid=\K[0-9]+' | head -1)
+        fi
+        
+        if [ -n "$pid" ]; then
+            process=$(ps -p $pid -o comm= 2>/dev/null || echo "Unknown")
+            log_warn "端口 $port ($service) 被占用 - 进程: $process (PID: $pid)"
+            conflicts+=("$port")
+            conflict_details+=("$port:$pid:$process:$service")
+        else
+            log_info "端口 $port ($service) 可用"
+        fi
+    done
+    
+    # 如果有冲突，询问处理方式
+    if [ ${#conflicts[@]} -gt 0 ]; then
+        echo ""
+        log_error "发现 ${#conflicts[@]} 个端口被占用"
+        echo ""
+        echo "冲突端口列表:"
+        for detail in "${conflict_details[@]}"; do
+            IFS=':' read -r port pid process service <<< "$detail"
+            echo "  - 端口 $port ($service): $process (PID: $pid)"
+        done
+        echo ""
+        
+        read -p "是否自动停止这些进程？[y/N] " -n 1 -r
+        echo
+        
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            for detail in "${conflict_details[@]}"; do
+                IFS=':' read -r port pid process service <<< "$detail"
+                log_info "停止进程 $pid ($process)..."
+                if kill -9 $pid 2>/dev/null; then
+                    log_success "进程 $pid 已停止"
+                else
+                    log_warn "停止进程 $pid 失败，可能需要 root 权限"
+                fi
+            done
+            sleep 2
+            
+            # 重新检查
+            log_info "重新检查端口..."
+            local still_occupied=false
+            for port in "${conflicts[@]}"; do
+                if ! check_port_availability "$port" >/dev/null 2>&1; then
+                    log_error "端口 $port 仍被占用"
+                    still_occupied=true
+                fi
+            done
+            
+            if [ "$still_occupied" = true ]; then
+                log_error "部分端口仍被占用，请手动处理"
+                read -p "是否继续安装？[y/N] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            else
+                log_success "所有端口已释放"
+            fi
+        else
+            log_warn "跳过自动停止进程"
+            read -p "是否继续安装？(可能导致端口冲突) [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        fi
+    else
+        log_success "所有端口检查通过"
+    fi
+    
+    echo ""
+}
+
 # 安装面板
 install_panel() {
     log_info "开始安装 dashGO 面板..."
+    
+    # 安装端口检测工具
+    install_port_detection_tools
+    
+    # 统一检查所有端口
+    check_all_ports
     
     # 询问数据库类型
     echo ""

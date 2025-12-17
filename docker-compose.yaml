@@ -35,8 +35,10 @@ services:
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    # 端口映射已注释，MySQL 仅在 Docker 内部网络可访问
+    # 如需从主机访问 MySQL，取消下面的注释并修改端口（如 3307:3306）
+    # ports:
+    #   - "3306:3306"
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
@@ -51,8 +53,10 @@ services:
     container_name: dashgo-redis
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # 端口映射已注释，Redis 仅在 Docker 内部网络可访问
+    # 如需从主机访问 Redis，取消下面的注释并修改端口（如 6380:6379）
+    # ports:
+    #   - "6379:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

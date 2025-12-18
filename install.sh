@@ -595,6 +595,63 @@ install_port_detection_tools() {
     fi
 }
 
+# 安装 Alpine 调试工具
+install_alpine_debug_tools() {
+    if [ "$OS" != "alpine" ]; then
+        return 0
+    fi
+    
+    log_info "安装 Alpine 调试工具..."
+    local debug_tools=""
+    
+    # 检查调试工具
+    command -v curl >/dev/null 2>&1 || debug_tools="$debug_tools curl"
+    command -v wget >/dev/null 2>&1 || debug_tools="$debug_tools wget"
+    command -v bind-tools >/dev/null 2>&1 || debug_tools="$debug_tools bind-tools"
+    command -v iputils >/dev/null 2>&1 || debug_tools="$debug_tools iputils"
+    command -v strace >/dev/null 2>&1 || debug_tools="$debug_tools strace"
+    command -v gcompat >/dev/null 2>&1 || debug_tools="$debug_tools gcompat"
+    
+    # 检查 musl 兼容性库
+    if [ ! -f /lib/libc.so.6 ] && ! apk info -e gcompat >/dev/null 2>&1; then
+        debug_tools="$debug_tools gcompat"
+    fi
+    
+    # 检查 CA 证书
+    if [ ! -d /etc/ssl/certs ] || [ -z "$(ls -A /etc/ssl/certs 2>/dev/null)" ]; then
+        debug_tools="$debug_tools ca-certificates"
+    fi
+    
+    if [ -n "$debug_tools" ]; then
+        log_info "安装调试工具: $debug_tools"
+        $PKG_UPDATE >/dev/null 2>&1 || true
+        $PKG_INSTALL $debug_tools >/dev/null 2>&1 || log_warn "部分调试工具安装失败"
+        
+        # 更新 CA 证书
+        if echo "$debug_tools" | grep -q "ca-certificates"; then
+            update-ca-certificates >/dev/null 2>&1 || true
+        fi
+        
+        log_success "Alpine 调试工具安装完成"
+    else
+        log_info "所有 Alpine 调试工具已安装"
+    fi
+    
+    # 检查 musl libc 兼容性
+    if [ -f /lib/ld-musl-*.so.1 ]; then
+        log_info "musl libc 已安装: $(ls /lib/ld-musl-*.so.1)"
+    else
+        log_warn "未检测到 musl libc"
+    fi
+    
+    # 检查 glibc 兼容层
+    if [ -f /lib/libc.so.6 ] || apk info -e gcompat >/dev/null 2>&1; then
+        log_info "glibc 兼容层可用"
+    else
+        log_warn "未安装 glibc 兼容层，某些预编译程序可能无法运行"
+    fi
+}
+
 # 端口检测诊断函数
 diagnose_port_detection() {
     local port="$1"
@@ -1903,37 +1960,112 @@ install_agent() {
     
     log_info "开始安装 dashGO Agent..."
     
+    # 检测 Alpine Linux 环境
+    local is_alpine=false
+    if [ "$OS" = "alpine" ]; then
+        is_alpine=true
+        log_info "检测到 Alpine Linux 环境"
+        
+        # 询问是否安装调试版本
+        echo ""
+        echo "检测到 Alpine Linux 系统，建议使用调试版本以获得更好的故障排除支持"
+        echo ""
+        read -p "是否安装调试版本? [Y/n]: " install_debug
+        install_debug=${install_debug:-Y}
+    fi
+    
     install_singbox
     
     mkdir -p "$AGENT_DIR"
     mkdir -p "$TEMP_DIR"
     cd "$TEMP_DIR"
     
-    # 下载 Agent (使用新的下载地址)
-    local AGENT_URL="https://download.sharon.wiki/agent/dashgo-agent-linux-${ARCH}"
-    
-    log_info "下载 Agent..."
-    log_info "下载地址: $AGENT_URL"
-    if wget --show-progress -O "$AGENT_DIR/dashgo-agent" "$AGENT_URL" 2>&1; then
-        log_success "Agent 下载完成"
-    else
-        log_warn "下载预编译版本失败 (HTTP错误或网络问题)"
-        log_info "尝试从源码构建..."
-        rm -f "$AGENT_DIR/dashgo-agent" 2>/dev/null
-        build_agent_from_source
+    # 根据选择下载对应版本
+    local agent_binary="dashgo-agent"
+    if [ "$is_alpine" = true ] && { [ "$install_debug" = "Y" ] || [ "$install_debug" = "y" ]; }; then
+        agent_binary="dashgo-agent-debug"
+        log_info "下载 Alpine 调试版本..."
+        
+        # 下载调试版本
+        local AGENT_DEBUG_URL="https://download.sharon.wiki/agent/dashgo-agent-debug-linux-${ARCH}"
+        log_info "下载地址: $AGENT_DEBUG_URL"
+        
+        if wget --show-progress -O "$AGENT_DIR/dashgo-agent-debug" "$AGENT_DEBUG_URL" 2>&1; then
+            log_success "调试版本 Agent 下载完成"
+            chmod +x "$AGENT_DIR/dashgo-agent-debug"
+            
+            # 同时下载诊断脚本
+            log_info "下载诊断脚本..."
+            if wget --show-progress -O "$AGENT_DIR/debug-alpine.sh" "https://download.sharon.wiki/agent/debug-alpine.sh" 2>&1; then
+                chmod +x "$AGENT_DIR/debug-alpine.sh"
+                log_success "诊断脚本下载完成"
+            else
+                log_warn "诊断脚本下载失败，将从源码获取"
+            fi
+            
+            # 安装 Alpine 特定依赖
+            log_info "安装 Alpine 调试工具..."
+            install_alpine_debug_tools
+            
+            # 运行启动诊断
+            log_info "运行启动诊断..."
+            if [ -f "$AGENT_DIR/debug-alpine.sh" ]; then
+                "$AGENT_DIR/debug-alpine.sh" > "$AGENT_DIR/diagnostic-report.txt" 2>&1 || true
+                log_info "诊断报告已保存到: $AGENT_DIR/diagnostic-report.txt"
+            fi
+        else
+            log_warn "调试版本下载失败，尝试从源码构建调试版本"
+            build_agent_from_source "true"
+            if [ -f "$AGENT_DIR/dashgo-agent-debug" ]; then
+                log_success "调试版本从源码构建完成"
+            else
+                log_warn "调试版本构建失败，切换到标准版本"
+                agent_binary="dashgo-agent"
+                install_debug="n"
+            fi
+        fi
     fi
     
-    chmod +x "$AGENT_DIR/dashgo-agent"
+    # 如果不是调试版本或调试版本下载失败，下载标准版本
+    if [ "$agent_binary" = "dashgo-agent" ]; then
+        local AGENT_URL="https://download.sharon.wiki/agent/dashgo-agent-linux-${ARCH}"
+        
+        log_info "下载 Agent..."
+        log_info "下载地址: $AGENT_URL"
+        if wget --show-progress -O "$AGENT_DIR/dashgo-agent" "$AGENT_URL" 2>&1; then
+            log_success "Agent 下载完成"
+        else
+            log_warn "下载预编译版本失败 (HTTP错误或网络问题)"
+            log_info "尝试从源码构建..."
+            rm -f "$AGENT_DIR/dashgo-agent" 2>/dev/null
+            build_agent_from_source "false"
+        fi
+        
+        chmod +x "$AGENT_DIR/dashgo-agent"
+    fi
     
     # 创建服务
-    create_agent_service "$panel_url" "$token"
+    create_agent_service "$panel_url" "$token" "$agent_binary"
+    
+    # 安装后验证
+    if [ "$is_alpine" = true ] && [ "$agent_binary" = "dashgo-agent-debug" ]; then
+        run_post_install_verification "$agent_binary"
+    fi
     
     log_success "Agent 安装完成！"
-    show_agent_info
+    
+    # 显示 Alpine 特定提示
+    if [ "$is_alpine" = true ]; then
+        show_alpine_agent_info "$agent_binary"
+    else
+        show_agent_info
+    fi
 }
 
 # 从源码构建 Agent
 build_agent_from_source() {
+    local build_debug="${1:-false}"
+    
     if ! command -v go &>/dev/null; then
         log_info "安装 Go..."
         local GO_VERSION="1.21.5"
@@ -1952,27 +2084,75 @@ build_agent_from_source() {
     git clone --depth 1 "https://github.com/${GITHUB_REPO}.git" dashgo
     
     cd dashgo/agent
-    go build -ldflags="-s -w" -o "$AGENT_DIR/dashgo-agent" .
     
-    log_info "从源码构建完成"
+    if [ "$build_debug" = "true" ]; then
+        log_info "从源码构建调试版本..."
+        # 构建调试版本，包含所有调试组件
+        go build -ldflags="-s -w" -o "$AGENT_DIR/dashgo-agent-debug" \
+            main_debug.go debug_logger.go alpine_types.go alpine_system_checker.go \
+            alpine_system_checker_unix.go alpine_error_handler.go diagnostic_tool.go version.go
+        
+        # 复制诊断脚本
+        if [ -f "debug-alpine.sh" ]; then
+            cp debug-alpine.sh "$AGENT_DIR/"
+            chmod +x "$AGENT_DIR/debug-alpine.sh"
+        fi
+        
+        log_info "调试版本从源码构建完成"
+    else
+        log_info "从源码构建标准版本..."
+        go build -ldflags="-s -w" -o "$AGENT_DIR/dashgo-agent" .
+        log_info "标准版本从源码构建完成"
+    fi
 }
 
 # 创建 Agent 服务
 create_agent_service() {
     local panel_url="$1"
     local token="$2"
+    local agent_binary="${3:-dashgo-agent}"
     
     log_info "创建 Agent 服务..."
     
-    cat > /etc/systemd/system/dashgo-agent.service << EOF
+    # 根据二进制文件名设置服务参数
+    local exec_start="${AGENT_DIR}/${agent_binary} -panel ${panel_url} -token ${token}"
+    local service_description="dashGO Agent"
+    
+    if [ "$agent_binary" = "dashgo-agent-debug" ]; then
+        service_description="dashGO Agent (Debug)"
+        # 调试版本启用详细日志
+        exec_start="${exec_start} -debug"
+        
+        # 设置调试环境变量
+        cat > /etc/systemd/system/dashgo-agent.service << EOF
 [Unit]
-Description=dashGO Agent
+Description=${service_description}
 Documentation=https://github.com/${GITHUB_REPO}
 After=network.target sing-box.service
 
 [Service]
 Type=simple
-ExecStart=${AGENT_DIR}/dashgo-agent -panel ${panel_url} -token ${token}
+ExecStart=${exec_start}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=infinity
+Environment=DEBUG=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    else
+        cat > /etc/systemd/system/dashgo-agent.service << EOF
+[Unit]
+Description=${service_description}
+Documentation=https://github.com/${GITHUB_REPO}
+After=network.target sing-box.service
+
+[Service]
+Type=simple
+ExecStart=${exec_start}
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -1982,6 +2162,7 @@ LimitNOFILE=infinity
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
     
     systemctl daemon-reload
     systemctl enable dashgo-agent
@@ -2009,6 +2190,126 @@ show_agent_info() {
     echo ""
     
     systemctl status dashgo-agent --no-pager 2>/dev/null || true
+}
+
+# 显示 Alpine Agent 信息
+show_alpine_agent_info() {
+    local agent_binary="${1:-dashgo-agent}"
+    
+    echo ""
+    echo "=========================================="
+    if [ "$agent_binary" = "dashgo-agent-debug" ]; then
+        echo -e "${GREEN}dashGO Agent (Alpine 调试版) 安装完成！${NC}"
+    else
+        echo -e "${GREEN}dashGO Agent (Alpine 版) 安装完成！${NC}"
+    fi
+    echo "=========================================="
+    echo ""
+    echo "安装目录: $AGENT_DIR"
+    echo "sing-box 目录: $SINGBOX_DIR"
+    echo "系统类型: Alpine Linux $OS_VERSION"
+    echo ""
+    
+    if [ "$agent_binary" = "dashgo-agent-debug" ]; then
+        echo "调试功能:"
+        echo "  诊断脚本: $AGENT_DIR/debug-alpine.sh"
+        echo "  诊断报告: $AGENT_DIR/diagnostic-report.txt"
+        echo "  运行诊断: $AGENT_DIR/dashgo-agent-debug diagnose"
+        echo ""
+    fi
+    
+    echo "常用命令:"
+    echo "  查看 Agent 状态: systemctl status dashgo-agent"
+    echo "  查看 Agent 日志: journalctl -u dashgo-agent -f"
+    echo "  重启 Agent: systemctl restart dashgo-agent"
+    echo "  查看 sing-box 状态: systemctl status sing-box"
+    echo "  查看 sing-box 日志: journalctl -u sing-box -f"
+    
+    if [ "$agent_binary" = "dashgo-agent-debug" ]; then
+        echo ""
+        echo "调试命令:"
+        echo "  运行完整诊断: $AGENT_DIR/debug-alpine.sh"
+        echo "  运行快速诊断: $AGENT_DIR/dashgo-agent-debug diagnose"
+        echo "  启用跟踪日志: TRACE=1 systemctl restart dashgo-agent"
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}Alpine Linux 特别提示:${NC}"
+    echo "  - 如遇到兼容性问题，请确保已安装 gcompat: apk add gcompat"
+    echo "  - 网络问题可检查 DNS 配置: cat /etc/resolv.conf"
+    echo "  - 容器环境需要适当的权限和网络配置"
+    
+    if [ -f "$AGENT_DIR/diagnostic-report.txt" ]; then
+        echo "  - 启动诊断报告: $AGENT_DIR/diagnostic-report.txt"
+    fi
+    
+    echo ""
+    
+    systemctl status dashgo-agent --no-pager 2>/dev/null || true
+}
+
+# 安装后验证
+run_post_install_verification() {
+    local agent_binary="${1:-dashgo-agent}"
+    
+    if [ "$agent_binary" != "dashgo-agent-debug" ]; then
+        return 0
+    fi
+    
+    log_info "运行安装后验证..."
+    
+    # 验证调试版本功能
+    if [ -f "$AGENT_DIR/dashgo-agent-debug" ]; then
+        log_info "验证调试版本功能..."
+        
+        # 测试帮助信息
+        if "$AGENT_DIR/dashgo-agent-debug" -h >/dev/null 2>&1; then
+            log_success "调试版本可执行文件正常"
+        else
+            log_warn "调试版本可执行文件可能有问题"
+        fi
+        
+        # 运行快速诊断
+        if [ -f "$AGENT_DIR/debug-alpine.sh" ]; then
+            log_info "运行快速验证诊断..."
+            timeout 30 "$AGENT_DIR/debug-alpine.sh" > "$AGENT_DIR/verification-report.txt" 2>&1 || true
+            log_info "验证诊断报告已保存到: $AGENT_DIR/verification-report.txt"
+        fi
+    fi
+    
+    # 检查服务状态
+    sleep 3
+    if systemctl is-active dashgo-agent >/dev/null 2>&1; then
+        log_success "Agent 服务运行正常"
+    else
+        log_warn "Agent 服务可能未正常启动，请检查日志"
+        log_info "查看日志: journalctl -u dashgo-agent -f"
+    fi
+    
+    # 检查依赖项
+    log_info "验证 Alpine 依赖项..."
+    local missing_deps=""
+    
+    if ! command -v sing-box >/dev/null 2>&1; then
+        missing_deps="$missing_deps sing-box"
+    fi
+    
+    if [ "$OS" = "alpine" ]; then
+        if ! apk info -e gcompat >/dev/null 2>&1 && [ ! -f /lib/libc.so.6 ]; then
+            missing_deps="$missing_deps gcompat"
+        fi
+        
+        if [ ! -d /etc/ssl/certs ] || [ -z "$(ls -A /etc/ssl/certs 2>/dev/null)" ]; then
+            missing_deps="$missing_deps ca-certificates"
+        fi
+    fi
+    
+    if [ -n "$missing_deps" ]; then
+        log_warn "缺少依赖项: $missing_deps"
+        log_info "建议安装: apk add $missing_deps"
+    else
+        log_success "所有依赖项检查通过"
+    fi
 }
 
 
@@ -2256,7 +2557,18 @@ update_panel() {
 update_agent() {
     log_info "更新 dashGO Agent..."
     
-    if [ ! -f "$AGENT_DIR/dashgo-agent" ]; then
+    # 检测当前安装的版本
+    local current_binary=""
+    local is_debug=false
+    
+    if [ -f "$AGENT_DIR/dashgo-agent-debug" ]; then
+        current_binary="dashgo-agent-debug"
+        is_debug=true
+        log_info "检测到调试版本 Agent"
+    elif [ -f "$AGENT_DIR/dashgo-agent" ]; then
+        current_binary="dashgo-agent"
+        log_info "检测到标准版本 Agent"
+    else
         log_error "Agent 未安装"
         exit 1
     fi
@@ -2268,24 +2580,61 @@ update_agent() {
     mkdir -p "$TEMP_DIR"
     cd "$TEMP_DIR"
     
-    local AGENT_URL="https://download.sharon.wiki/agent/dashgo-agent-linux-${ARCH}"
-    log_info "下载地址: $AGENT_URL"
-    
-    if wget --show-progress -O "$AGENT_DIR/dashgo-agent.new" "$AGENT_URL" 2>&1; then
-        mv "$AGENT_DIR/dashgo-agent.new" "$AGENT_DIR/dashgo-agent"
-        chmod +x "$AGENT_DIR/dashgo-agent"
-        log_success "Agent 更新完成"
+    if [ "$is_debug" = true ]; then
+        # 更新调试版本
+        local AGENT_DEBUG_URL="https://download.sharon.wiki/agent/dashgo-agent-debug-linux-${ARCH}"
+        log_info "下载调试版本地址: $AGENT_DEBUG_URL"
+        
+        if wget --show-progress -O "$AGENT_DIR/dashgo-agent-debug.new" "$AGENT_DEBUG_URL" 2>&1; then
+            mv "$AGENT_DIR/dashgo-agent-debug.new" "$AGENT_DIR/dashgo-agent-debug"
+            chmod +x "$AGENT_DIR/dashgo-agent-debug"
+            log_success "调试版本 Agent 更新完成"
+            
+            # 同时更新诊断脚本
+            log_info "更新诊断脚本..."
+            if wget --show-progress -O "$AGENT_DIR/debug-alpine.sh.new" "https://download.sharon.wiki/agent/debug-alpine.sh" 2>&1; then
+                mv "$AGENT_DIR/debug-alpine.sh.new" "$AGENT_DIR/debug-alpine.sh"
+                chmod +x "$AGENT_DIR/debug-alpine.sh"
+                log_success "诊断脚本更新完成"
+            else
+                log_warn "诊断脚本更新失败"
+            fi
+        else
+            log_warn "调试版本下载失败 (HTTP错误或网络问题)"
+            log_info "尝试从源码构建..."
+            rm -f "$AGENT_DIR/dashgo-agent-debug.new" 2>/dev/null
+            build_agent_from_source "true"
+        fi
     else
-        log_warn "下载失败 (HTTP错误或网络问题)"
-        log_info "尝试从源码构建..."
-        rm -f "$AGENT_DIR/dashgo-agent.new" 2>/dev/null
-        build_agent_from_source
+        # 更新标准版本
+        local AGENT_URL="https://download.sharon.wiki/agent/dashgo-agent-linux-${ARCH}"
+        log_info "下载标准版本地址: $AGENT_URL"
+        
+        if wget --show-progress -O "$AGENT_DIR/dashgo-agent.new" "$AGENT_URL" 2>&1; then
+            mv "$AGENT_DIR/dashgo-agent.new" "$AGENT_DIR/dashgo-agent"
+            chmod +x "$AGENT_DIR/dashgo-agent"
+            log_success "标准版本 Agent 更新完成"
+        else
+            log_warn "标准版本下载失败 (HTTP错误或网络问题)"
+            log_info "尝试从源码构建..."
+            rm -f "$AGENT_DIR/dashgo-agent.new" 2>/dev/null
+            build_agent_from_source "false"
+        fi
     fi
     
     # 重启服务
     systemctl start dashgo-agent
     
     log_success "Agent 更新完成！"
+    
+    # 显示更新后的信息
+    if [ "$is_debug" = true ] && [ "$OS" = "alpine" ]; then
+        echo ""
+        log_info "调试版本特性:"
+        echo "  - 详细日志记录已启用"
+        echo "  - 可使用 $AGENT_DIR/debug-alpine.sh 运行诊断"
+        echo "  - 可使用 $AGENT_DIR/dashgo-agent-debug diagnose 快速诊断"
+    fi
 }
 
 # ==================== 主函数 ====================
@@ -2337,10 +2686,21 @@ main() {
             echo "  update-panel       更新面板"
             echo "  update-agent       更新节点"
             echo ""
+            echo "Alpine Linux 特性:"
+            echo "  - 自动检测 Alpine 环境"
+            echo "  - 提供调试版本选项"
+            echo "  - 安装 musl libc 兼容工具"
+            echo "  - 集成诊断脚本"
+            echo "  - 启动时自动诊断"
+            echo ""
             echo "示例:"
             echo "  $0 panel"
             echo "  $0 agent https://panel.example.com abc123"
             echo "  $0 all"
+            echo ""
+            echo "Alpine 调试:"
+            echo "  在 Alpine 系统上安装 Agent 时会自动询问是否使用调试版本"
+            echo "  调试版本包含详细日志、诊断工具和故障排除功能"
             ;;
         *)
             show_menu

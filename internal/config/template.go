@@ -196,7 +196,7 @@ func (tm *TemplateManager) UpdateTemplate(protocol string, updates map[string]in
 		switch key {
 		case "version":
 			if version, ok := value.(string); ok {
-				template.Version = version
+				template.ConfigTemplate.Version = version
 			}
 		case "required":
 			if required, ok := value.([]string); ok {
@@ -301,8 +301,8 @@ func (tm *TemplateManager) processInheritance(template *EnhancedConfigTemplate) 
 	}
 
 	// 继承基本属性
-	if template.Version == "" {
-		template.Version = parent.Version
+	if template.ConfigTemplate.Version == "" {
+		template.ConfigTemplate.Version = parent.ConfigTemplate.Version
 	}
 
 	// 合并必需参数
@@ -393,7 +393,7 @@ func (tm *TemplateManager) loadDefaultTemplates() {
 func (tm *TemplateManager) GetTemplateVersions() map[string]string {
 	versions := make(map[string]string)
 	for protocol, template := range tm.templates {
-		versions[protocol] = template.Version
+		versions[protocol] = template.ConfigTemplate.Version
 	}
 	return versions
 }

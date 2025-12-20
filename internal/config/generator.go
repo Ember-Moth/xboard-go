@@ -366,6 +366,7 @@ func (cg *ConfigGenerator) applyVMessParams(outbound *Outbound, params map[strin
 	if security, ok := params["security"].(string); ok {
 		// VMess 的 security 字段在 sing-box 中对应不同的处理
 		// 这里需要根据实际情况调整
+		_ = security // 根据需要处理
 	}
 
 	if alterID, ok := params["alter_id"].(float64); ok {

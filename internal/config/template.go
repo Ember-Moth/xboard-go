@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strings"
-	"text/template"
 )
 
 // TemplateManager 模板管理器

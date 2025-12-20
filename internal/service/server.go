@@ -58,15 +58,8 @@ func (s *ServerService) GetAvailableServers(user *model.User) ([]ServerInfo, err
 	return result, nil
 }
 
-// ServerInfo 服务器信息（包含用户密码等）
-type ServerInfo struct {
-	model.Server
-	Password string `json:"password"`
-	Ports    string `json:"ports,omitempty"`
-}
-
-func (s *ServerService) BuildServerInfo(server *model.Server, user *model.User) ServerInfo {
-	info := ServerInfo{
+func (s *ServerService) BuildServerInfo(server *model.Server, user *model.User) model.ServerInfo {
+	info := model.ServerInfo{
 		Server: *server,
 	}
 

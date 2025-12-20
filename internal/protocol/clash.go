@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"dashgo/internal/model"
-	"dashgo/internal/service"
 
 	"gopkg.in/yaml.v3"
 )
@@ -46,7 +45,7 @@ type ClashProxyGroup struct {
 }
 
 // GenerateClashConfig 生成 Clash 配置
-func GenerateClashConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateClashConfig(servers []model.ServerInfo, user *model.User) string {
 	config := getDefaultClashConfig()
 
 	proxyNames := []string{}
@@ -78,7 +77,7 @@ func GenerateClashConfig(servers []service.ServerInfo, user *model.User) string 
 	return string(data)
 }
 
-func buildClashProxy(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildClashProxy(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 

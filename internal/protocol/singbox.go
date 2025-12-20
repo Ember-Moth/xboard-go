@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"dashgo/internal/model"
-	"dashgo/internal/service"
 )
 
 // SingBoxConfig sing-box 配置结构
@@ -91,7 +90,7 @@ type RouteRule struct {
 }
 
 // GenerateSingBoxConfig 生成 sing-box 配置
-func GenerateSingBoxConfig(servers []service.ServerInfo, user *model.User) map[string]interface{} {
+func GenerateSingBoxConfig(servers []model.ServerInfo, user *model.User) map[string]interface{} {
 	config := getDefaultSingBoxConfig()
 
 	outbounds := config["outbounds"].([]interface{})
@@ -143,7 +142,7 @@ func GenerateSingBoxConfig(servers []service.ServerInfo, user *model.User) map[s
 	return config
 }
 
-func buildSingBoxOutbound(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildSingBoxOutbound(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 
 	switch server.Type {
@@ -175,7 +174,7 @@ func buildSingBoxOutbound(server service.ServerInfo, user *model.User) map[strin
 	return nil
 }
 
-func buildShadowTLS(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildShadowTLS(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -205,7 +204,7 @@ func buildShadowTLS(server service.ServerInfo, user *model.User) map[string]inte
 	return out
 }
 
-func buildNaive(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildNaive(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -230,7 +229,7 @@ func buildNaive(server service.ServerInfo, user *model.User) map[string]interfac
 	return out
 }
 
-func buildAnyTLS(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildSocks(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -262,7 +261,7 @@ func buildAnyTLS(server service.ServerInfo, user *model.User) map[string]interfa
 	return out
 }
 
-func buildSocks(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildSocks(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -283,7 +282,7 @@ func buildSocks(server service.ServerInfo, user *model.User) map[string]interfac
 	return out
 }
 
-func buildHTTP(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildHTTP(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -322,7 +321,7 @@ func buildHTTP(server service.ServerInfo, user *model.User) map[string]interface
 	return out
 }
 
-func buildShadowsocks(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildShadowsocks(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -360,7 +359,7 @@ func buildShadowsocks(server service.ServerInfo, user *model.User) map[string]in
 	return out
 }
 
-func buildVmess(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildVmess(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -401,7 +400,7 @@ func buildVmess(server service.ServerInfo, user *model.User) map[string]interfac
 	return out
 }
 
-func buildVless(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildVless(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -458,7 +457,7 @@ func buildVless(server service.ServerInfo, user *model.User) map[string]interfac
 	return out
 }
 
-func buildTrojan(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildTrojan(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -491,7 +490,7 @@ func buildTrojan(server service.ServerInfo, user *model.User) map[string]interfa
 	return out
 }
 
-func buildHysteria(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildHysteria(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -561,7 +560,7 @@ func buildHysteria(server service.ServerInfo, user *model.User) map[string]inter
 	return out
 }
 
-func buildTuic(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildTuic(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 

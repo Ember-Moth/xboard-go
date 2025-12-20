@@ -280,15 +280,15 @@ func containsAny(s string, substrs ...string) bool {
 }
 
 // 这些函数调用 protocol 告
-func generateSingBoxConfig(servers []service.ServerInfo, user *model.User) map[string]interface{} {
+func generateSingBoxConfig(servers []model.ServerInfo, user *model.User) map[string]interface{} {
 	return protocol.GenerateSingBoxConfig(servers, user)
 }
 
-func generateClashConfig(servers []service.ServerInfo, user *model.User) string {
+func generateClashConfig(servers []model.ServerInfo, user *model.User) string {
 	return protocol.GenerateClashConfig(servers, user)
 }
 
-func generateBase64Links(servers []service.ServerInfo, user *model.User) string {
+func generateBase64Links(servers []model.ServerInfo, user *model.User) string {
 	return protocol.GenerateBase64Links(servers, user)
 }
 

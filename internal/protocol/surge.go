@@ -5,11 +5,10 @@ import (
 	"strings"
 
 	"dashgo/internal/model"
-	"dashgo/internal/service"
 )
 
 // GenerateSurgeConfig 生成 Surge 配置
-func GenerateSurgeConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateSurgeConfig(servers []model.ServerInfo, user *model.User) string {
 	var sb strings.Builder
 
 	// General
@@ -49,7 +48,7 @@ func GenerateSurgeConfig(servers []service.ServerInfo, user *model.User) string 
 	return sb.String()
 }
 
-func buildSurgeProxy(server service.ServerInfo, user *model.User) string {
+func buildSurgeProxy(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -265,7 +264,7 @@ func buildSurgeProxy(server service.ServerInfo, user *model.User) string {
 }
 
 // GenerateSurfboardConfig 生成 Surfboard 配置 (类似 Surge)
-func GenerateSurfboardConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateSurfboardConfig(servers []model.ServerInfo, user *model.User) string {
 	// Surfboard 配置格式告Surge 类似
 	return GenerateSurgeConfig(servers, user)
 }

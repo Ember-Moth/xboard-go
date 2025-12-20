@@ -5,13 +5,12 @@ import (
 	"strings"
 
 	"dashgo/internal/model"
-	"dashgo/internal/service"
 
 	"gopkg.in/yaml.v3"
 )
 
 // GenerateQuantumultXConfig 生成 Quantumult X 配置
-func GenerateQuantumultXConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateQuantumultXConfig(servers []model.ServerInfo, user *model.User) string {
 	var lines []string
 
 	for _, server := range servers {
@@ -24,7 +23,7 @@ func GenerateQuantumultXConfig(servers []service.ServerInfo, user *model.User) s
 	return strings.Join(lines, "\n")
 }
 
-func buildQuantumultXProxy(server service.ServerInfo, user *model.User) string {
+func buildQuantumultXProxy(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -249,7 +248,7 @@ func buildQuantumultXProxy(server service.ServerInfo, user *model.User) string {
 }
 
 // GenerateLoonConfig 生成 Loon 配置
-func GenerateLoonConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateLoonConfig(servers []model.ServerInfo, user *model.User) string {
 	var lines []string
 
 	for _, server := range servers {
@@ -262,7 +261,7 @@ func GenerateLoonConfig(servers []service.ServerInfo, user *model.User) string {
 	return strings.Join(lines, "\n")
 }
 
-func buildLoonProxy(server service.ServerInfo, user *model.User) string {
+func buildLoonProxy(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 
@@ -447,13 +446,13 @@ func buildLoonProxy(server service.ServerInfo, user *model.User) string {
 }
 
 // GenerateShadowrocketConfig 生成 Shadowrocket 配置 (Base64 URI)
-func GenerateShadowrocketConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateShadowrocketConfig(servers []model.ServerInfo, user *model.User) string {
 	// Shadowrocket 使用标准 URI 格式，与 Base64Links 相同
 	return GenerateBase64Links(servers, user)
 }
 
 // GenerateClashMetaConfig 生成 Clash Meta (mihomo) 配置
-func GenerateClashMetaConfig(servers []service.ServerInfo, user *model.User) string {
+func GenerateClashMetaConfig(servers []model.ServerInfo, user *model.User) string {
 	// Clash Meta 完全兼容 Clash 配置，但支持更多协议
 	config := getDefaultClashMetaConfig()
 
@@ -477,7 +476,7 @@ func GenerateClashMetaConfig(servers []service.ServerInfo, user *model.User) str
 	return string(data)
 }
 
-func buildClashMetaProxy(server service.ServerInfo, user *model.User) map[string]interface{} {
+func buildClashMetaProxy(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 

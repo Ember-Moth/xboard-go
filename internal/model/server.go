@@ -142,3 +142,10 @@ type ServerRoute struct {
 func (ServerRoute) TableName() string {
 	return "v2_server_route"
 }
+
+// ServerInfo 服务器信息（包含用户密码等）
+type ServerInfo struct {
+	Server
+	Password string `json:"password"`
+	Ports    string `json:"ports,omitempty"`
+}

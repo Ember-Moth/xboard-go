@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"dashgo/internal/model"
-	"dashgo/internal/service"
 )
 
 // GenerateBase64Links 生成 Base64 编码的订阅链接
-func GenerateBase64Links(servers []service.ServerInfo, user *model.User) string {
+func GenerateBase64Links(servers []model.ServerInfo, user *model.User) string {
 	var links []string
 
 	for _, server := range servers {
@@ -25,7 +24,7 @@ func GenerateBase64Links(servers []service.ServerInfo, user *model.User) string 
 	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
 }
 
-func generateLink(server service.ServerInfo, user *model.User) string {
+func generateLink(server model.ServerInfo, user *model.User) string {
 	switch server.Type {
 	case model.ServerTypeShadowsocks:
 		return generateSSLink(server, user)
@@ -48,7 +47,7 @@ func generateLink(server service.ServerInfo, user *model.User) string {
 }
 
 // ss://method:password@host:port#name
-func generateSSLink(server service.ServerInfo, user *model.User) string {
+func generateSSLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	// 获取加密方式，默认 aes-256-gcm
@@ -86,7 +85,7 @@ func generateSSLink(server service.ServerInfo, user *model.User) string {
 }
 
 // vmess://base64(json)
-func generateVmessLink(server service.ServerInfo, user *model.User) string {
+func generateVmessLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	vmess := map[string]interface{}{
@@ -133,7 +132,7 @@ func generateVmessLink(server service.ServerInfo, user *model.User) string {
 }
 
 // vless://uuid@host:port?params#name
-func generateVlessLink(server service.ServerInfo, user *model.User) string {
+func generateVlessLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	params := url.Values{}
@@ -203,7 +202,7 @@ func generateVlessLink(server service.ServerInfo, user *model.User) string {
 }
 
 // trojan://password@host:port?params#name
-func generateTrojanLink(server service.ServerInfo, user *model.User) string {
+func generateTrojanLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	params := url.Values{}
@@ -237,7 +236,7 @@ func generateTrojanLink(server service.ServerInfo, user *model.User) string {
 }
 
 // hysteria2://password@host:port?params#name
-func generateHysteriaLink(server service.ServerInfo, user *model.User) string {
+func generateHysteriaLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	version := 2
@@ -287,7 +286,7 @@ func generateHysteriaLink(server service.ServerInfo, user *model.User) string {
 }
 
 // tuic://uuid:password@host:port?params#name
-func generateTuicLink(server service.ServerInfo, user *model.User) string {
+func generateTuicLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	params := url.Values{}
@@ -313,7 +312,7 @@ func generateTuicLink(server service.ServerInfo, user *model.User) string {
 }
 
 // anytls://password@host:port?params#name
-func generateAnyTLSLink(server service.ServerInfo, user *model.User) string {
+func generateAnyTLSLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	params := url.Values{}
@@ -336,7 +335,7 @@ func generateAnyTLSLink(server service.ServerInfo, user *model.User) string {
 }
 
 // ShadowTLS 使用 ss:// 格式，带 shadow-tls 插件
-func generateShadowTLSLink(server service.ServerInfo, user *model.User) string {
+func generateShadowTLSLink(server model.ServerInfo, user *model.User) string {
 	ps := server.ProtocolSettings
 
 	// 获取加密方式

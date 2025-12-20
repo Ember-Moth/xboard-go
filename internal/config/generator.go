@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"text/template"
-
-	"dashgo/internal/model"
 )
 
 // ConfigGenerator 配置生成器

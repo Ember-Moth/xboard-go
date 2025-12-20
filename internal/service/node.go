@@ -129,7 +129,6 @@ func (ns *NodeService) CreateNode(req *NodeCreateRequest) (*NodeResponse, error)
 		Host:     req.Host,
 		Port:     fmt.Sprintf("%d", req.Port),
 		Settings: convertedParams,
-		Status:   "active",
 	}
 
 	// 保存到数据库
@@ -190,7 +189,6 @@ func (ns *NodeService) CreateNode(req *NodeCreateRequest) (*NodeResponse, error)
 		Port:      req.Port,
 		LocalPort: localPort,
 		Params:    convertedParams,
-		Status:    server.Status,
 		Config:    configJSON,
 		CreatedAt: server.CreatedAt,
 		UpdatedAt: server.UpdatedAt,
@@ -329,7 +327,6 @@ func (ns *NodeService) UpdateNode(nodeID int64, req *NodeUpdateRequest) (*NodeRe
 		Port:      newPort,
 		LocalPort: newLocalPort,
 		Params:    server.Settings,
-		Status:    server.Status,
 		Config:    configJSON,
 		CreatedAt: server.CreatedAt,
 		UpdatedAt: server.UpdatedAt,
@@ -483,7 +480,6 @@ func (ns *NodeService) getNodeResponse(server *model.Server, localPort int) (*No
 		Port:      parsePort(server.Port),
 		LocalPort: localPort,
 		Params:    server.Settings,
-		Status:    server.Status,
 		Config:    configJSON,
 		CreatedAt: server.CreatedAt,
 		UpdatedAt: server.UpdatedAt,

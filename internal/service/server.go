@@ -35,7 +35,7 @@ func (s *ServerService) GetAllServers() ([]model.Server, error) {
 }
 
 // GetAvailableServers 获取用户可用的服务器列表
-func (s *ServerService) GetAvailableServers(user *model.User) ([]ServerInfo, error) {
+func (s *ServerService) GetAvailableServers(user *model.User) ([]model.ServerInfo, error) {
 	var servers []model.Server
 	var err error
 

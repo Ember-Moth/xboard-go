@@ -229,7 +229,7 @@ func buildNaive(server model.ServerInfo, user *model.User) map[string]interface{
 	return out
 }
 
-func buildSocks(server model.ServerInfo, user *model.User) map[string]interface{} {
+func buildAnyTLS(server model.ServerInfo, user *model.User) map[string]interface{} {
 	ps := server.ProtocolSettings
 	port := parsePort(server.Port)
 

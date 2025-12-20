@@ -156,7 +156,7 @@ func (ns *NodeService) CreateNode(req *NodeCreateRequest) (*NodeResponse, error)
 	}
 
 	// 生成配置
-	nodeConfig := config.NodeConfig{
+	nodeConfig := config.NodeInfo{
 		Name:     server.Name,
 		Protocol: server.Type,
 		Host:     server.Host,
@@ -164,7 +164,7 @@ func (ns *NodeService) CreateNode(req *NodeCreateRequest) (*NodeResponse, error)
 		Params:   convertedParams,
 	}
 
-	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeConfig{nodeConfig}, &config.GenerateOptions{
+	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeInfo{nodeConfig}, &config.GenerateOptions{
 		LocalPort:   localPort,
 		LogLevel:    "info",
 		EnableDNS:   true,
@@ -293,7 +293,7 @@ func (ns *NodeService) UpdateNode(nodeID int64, req *NodeUpdateRequest) (*NodeRe
 	}
 
 	// 重新生成配置
-	nodeConfig := config.NodeConfig{
+	nodeConfig := config.NodeInfo{
 		Name:     server.Name,
 		Protocol: server.Type,
 		Host:     server.Host,
@@ -301,7 +301,7 @@ func (ns *NodeService) UpdateNode(nodeID int64, req *NodeUpdateRequest) (*NodeRe
 		Params:   server.Settings,
 	}
 
-	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeConfig{nodeConfig}, &config.GenerateOptions{
+	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeInfo{nodeConfig}, &config.GenerateOptions{
 		LocalPort:   newLocalPort,
 		LogLevel:    "info",
 		EnableDNS:   true,
@@ -421,7 +421,7 @@ func (ns *NodeService) GenerateNodeConfig(nodeID int64) (string, error) {
 		localPort = ports[0]
 	}
 
-	nodeConfig := config.NodeConfig{
+	nodeConfig := config.NodeInfo{
 		Name:     server.Name,
 		Protocol: server.Type,
 		Host:     server.Host,
@@ -429,7 +429,7 @@ func (ns *NodeService) GenerateNodeConfig(nodeID int64) (string, error) {
 		Params:   server.Settings,
 	}
 
-	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeConfig{nodeConfig}, &config.GenerateOptions{
+	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeInfo{nodeConfig}, &config.GenerateOptions{
 		LocalPort:   localPort,
 		LogLevel:    "info",
 		EnableDNS:   true,
@@ -452,7 +452,7 @@ func (ns *NodeService) RollbackNodeConfig(nodeID int64) error {
 // getNodeResponse 构建节点响应
 func (ns *NodeService) getNodeResponse(server *model.Server, localPort int) (*NodeResponse, error) {
 	// 生成当前配置
-	nodeConfig := config.NodeConfig{
+	nodeConfig := config.NodeInfo{
 		Name:     server.Name,
 		Protocol: server.Type,
 		Host:     server.Host,
@@ -460,7 +460,7 @@ func (ns *NodeService) getNodeResponse(server *model.Server, localPort int) (*No
 		Params:   server.Settings,
 	}
 
-	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeConfig{nodeConfig}, &config.GenerateOptions{
+	singboxConfig, err := ns.configGenerator.GenerateConfig([]config.NodeInfo{nodeConfig}, &config.GenerateOptions{
 		LocalPort:   localPort,
 		LogLevel:    "info",
 		EnableDNS:   true,

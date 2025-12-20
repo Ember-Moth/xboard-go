@@ -163,7 +163,7 @@ func NewConfigValidator() *ConfigValidator {
 }
 
 // GenerateConfig 生成 sing-box 配置
-func (cg *ConfigGenerator) GenerateConfig(nodes []NodeConfig, options *GenerateOptions) (*SingBoxConfig, error) {
+func (cg *ConfigGenerator) GenerateConfig(nodes []NodeInfo, options *GenerateOptions) (*SingBoxConfig, error) {
 	if options == nil {
 		options = &GenerateOptions{}
 	}
@@ -199,8 +199,8 @@ func (cg *ConfigGenerator) GenerateConfig(nodes []NodeConfig, options *GenerateO
 	return config, nil
 }
 
-// NodeConfig 节点配置
-type NodeConfig struct {
+// NodeInfo 节点信息（用于配置生成）
+type NodeInfo struct {
 	Name     string                 `json:"name"`
 	Protocol string                 `json:"protocol"`
 	Host     string                 `json:"host"`
@@ -257,7 +257,7 @@ func (cg *ConfigGenerator) GetTemplate(protocol string) (*ConfigTemplate, bool) 
 }
 
 // generateOutbound 生成出站配置
-func (cg *ConfigGenerator) generateOutbound(node NodeConfig) (*Outbound, error) {
+func (cg *ConfigGenerator) generateOutbound(node NodeInfo) (*Outbound, error) {
 	template, exists := cg.templates[node.Protocol]
 	if !exists {
 		return nil, fmt.Errorf("unsupported protocol: %s", node.Protocol)
